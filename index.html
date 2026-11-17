@@ -467,25 +467,59 @@
   // ---------- busca de dados ----------
   const cache = new Map();   // id -> estação
   let reqSeq = 0;
+  // fetch com tempo limite
+  async function fetchT(url, opts = {}, ms = 25000){
+    const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), ms);
+    try{ return await fetch(url, Object.assign({signal: ctl.signal}, opts)); } finally { clearTimeout(tm); }
+  }
+  // OpenStreetMap (Overpass): o servidor principal costuma ficar sobrecarregado, então tenta espelhos gratuitos
+  const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter',
+                    'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+  let overpassBest = 0;
+  async function overpass(q, ms = 30000){
+    for (let k = 0; k < OVERPASS.length; k++){
+      const i = (overpassBest + k) % OVERPASS.length;
+      try{
+        const r = await fetchT(OVERPASS[i], {method:'POST', body:'data='+encodeURIComponent(q), headers:{'Content-Type':'application/x-www-form-urlencoded'}}, ms);
+        if (!r.ok) continue;
+        const j = await r.json();
+        overpassBest = i;            // lembra o servidor que respondeu
+        return j;
+      }catch(e){ /* tenta o próximo */ }
+    }
+    throw new Error('OpenStreetMap ocupado agora');
+  }
+  // áreas já carregadas (10 min) para não pedir de novo ao mover pouco o mapa
+  const areas = {ocm: [], osm: []};
+  const covered = (src, b) => areas[src].some(a => Date.now() - a.t < 600000 && a.b.contains(b));
+  const remember = (src, b) => { areas[src].push({b, t: Date.now()}); areas[src] = areas[src].slice(-30); };
+
   async function getOCM(b){
-    if (!apiKey) return [];
-    const c = b.getCenter();
-    const radius = Math.min(60, Math.max(2, c.distanceTo(b.getNorthEast())/1000));
+    if (!apiKey || covered('ocm', b)) return [];
+    const big = b.pad(0.3), c = big.getCenter();
+    const radius = Math.min(60, Math.max(2, c.distanceTo(big.getNorthEast())/1000));
     const url = 'https://api.openchargemap.io/v3/poi/?output=json&compact=false&verbose=false&includecomments=true'
-      + '&maxresults=400&distanceunit=KM&distance='+radius.toFixed(1)
+      + '&maxresults=500&distanceunit=KM&distance='+radius.toFixed(1)
       + '&latitude='+c.lat.toFixed(5)+'&longitude='+c.lng.toFixed(5)+'&key='+encodeURIComponent(apiKey);
-    const r = await fetch(url);
+    let r;
+    for (let tries = 0; tries < 2; tries++){
+      try{ r = await fetchT(url); if (r.ok || r.status === 401 || r.status === 403) break; }catch(e){ r = null; }
+      await new Promise(res => setTimeout(res, 1500));
+    }
+    if (!r) throw new Error('Open Charge Map sem resposta');
     if (r.status === 401 || r.status === 403) throw new Error('Chave do Open Charge Map recusada – confira em ⚙️');
-    if (!r.ok) throw new Error('Open Charge Map: erro '+r.status);
-    return (await r.json()).map(fromOCM);
+    if (!r.ok) throw new Error('Open Charge Map fora do ar (erro '+r.status+')');
+    const out = (await r.json()).map(fromOCM);
+    remember('ocm', big);
+    return out;
   }
   async function getOSM(b){
-    const s = b.getSouth(), w = b.getWest(), n = b.getNorth(), e = b.getEast();
-    const q = `[out:json][timeout:25];nwr["amenity"="charging_station"](${s},${w},${n},${e});out center tags 500;`;
-    const r = await fetch('https://overpass-api.de/api/interpreter', {method:'POST', body:'data='+encodeURIComponent(q),
-      headers:{'Content-Type':'application/x-www-form-urlencoded'}});
-    if (!r.ok) throw new Error('OpenStreetMap: erro '+r.status);
-    return ((await r.json()).elements || []).map(fromOSM);
+    if (covered('osm', b)) return [];
+    const big = b.pad(0.3);
+    const q = `[out:json][timeout:25];nwr["amenity"="charging_station"](${big.getSouth()},${big.getWest()},${big.getNorth()},${big.getEast()});out center tags 800;`;
+    const out = ((await overpass(q)).elements || []).map(fromOSM);
+    remember('osm', big);
+    return out;
   }
 
   // Junta as duas fontes: se um ponto do OSM estiver a menos de 60 m de um do OCM, considera o mesmo posto
@@ -505,6 +539,7 @@
     return out;
   }
 
+  let retryT = null;
   async function load(){
     const z = map.getZoom();
     if (z < 9){ setStatus('Aproxime o mapa para ver os postos'); layer.clearLayers(); return; }
@@ -524,7 +559,10 @@
     const nNew = [...cache.values()].filter(x => isNew(x) && x.lat != null && b.contains([x.lat, x.lon])).length;
     if (nNew) msg += ` · 🆕 ${nNew} novo${nNew>1?'s':''} nos últimos 30 dias`;
     if (!apiKey) msg += ' · só OSM (adicione a chave em ⚙️)';
-    if (errs.length) msg += ' · ' + errs.join(' · ');
+    if (errs.length){
+      msg += ' · ⚠ ' + errs.join(' · ') + ' – tentando de novo em 20 s';
+      clearTimeout(retryT); retryT = setTimeout(() => { if (my === reqSeq) load(); }, 20000);
+    }
     setStatus(msg);
   }
 
@@ -889,7 +927,7 @@
     for (const k in refIds){ const v = val(refIds[k]); if (v > 0 || (k==='margin' && v === 0)) refs[k] = v; }
     store.set('refs', refs);
     apiKey = $('keyInput').value.trim(); store.set('key', apiKey);
-    $('cfg').classList.remove('open'); cache.clear(); load();
+    $('cfg').classList.remove('open'); cache.clear(); areas.ocm = []; areas.osm = []; load();
   };
 
   // ---------- horário de funcionamento (formato OpenStreetMap) ----------
@@ -999,8 +1037,7 @@
     box.innerHTML = '<span class="muted">Procurando num raio de 400 m…</span>';
     const q = `[out:json][timeout:20];(nwr(around:400,${s.lat},${s.lon})["amenity"~"^(toilets|restaurant|fast_food|food_court|cafe|pharmacy)$"];nwr(around:400,${s.lat},${s.lon})["shop"~"^(bakery|pastry|supermarket|convenience|mall|chemist)$"];);out center tags 80;`;
     try{
-      const r = await fetch('https://overpass-api.de/api/interpreter', {method:'POST', body:'data='+encodeURIComponent(q), headers:{'Content-Type':'application/x-www-form-urlencoded'}});
-      const els = ((await r.json()).elements || []).map(e => ({t:e.tags||{}, lat:e.lat||e.center?.lat, lon:e.lon||e.center?.lon}))
+      const els = ((await overpass(q, 20000)).elements || []).map(e => ({t:e.tags||{}, lat:e.lat||e.center?.lat, lon:e.lon||e.center?.lon}))
         .filter(e => e.lat != null).map(e => Object.assign(e, {d: L.latLng(s.lat, s.lon).distanceTo([e.lat, e.lon])}));
       let h = '';
       for (const [, label, test] of POI){
@@ -1218,16 +1255,14 @@
   async function stationsNear(sampleSets, corridorKm, say){
     const lines = sampleSets.map(ss => sampleFilter(ss, 3).map(s => s.ll[0].toFixed(4)+','+s.ll[1].toFixed(4)).join(','));
     const q = `[out:json][timeout:90];(${lines.map(l => `nwr["amenity"="charging_station"](around:${corridorKm*1000},${l});`).join('')});out center tags;`;
-    const pOsm = fetch('https://overpass-api.de/api/interpreter', {method:'POST', body:'data='+encodeURIComponent(q),
-      headers:{'Content-Type':'application/x-www-form-urlencoded'}}).then(r => r.ok ? r.json() : {elements:[]})
-      .then(j => (j.elements||[]).map(fromOSM)).catch(() => []);
+    const pOsm = overpass(q, 90000).then(j => (j.elements||[]).map(fromOSM)).catch(() => []);
     const ocm = [];
     if (apiKey){
       const centers = [];
       for (const ss of sampleSets) for (const c of sampleFilter(ss, 40)) if (!centers.some(x => hav(x.ll, c.ll) < 15)) centers.push(c);
       const seen = new Set();
       for (let i = 0; i < centers.length; i += 4){
-        const batch = centers.slice(i, i+4).map(c => fetch('https://api.openchargemap.io/v3/poi/?output=json&compact=false&verbose=false&includecomments=true'
+        const batch = centers.slice(i, i+4).map(c => fetchT('https://api.openchargemap.io/v3/poi/?output=json&compact=false&verbose=false&includecomments=true'
           + '&maxresults=200&distanceunit=KM&distance=22&latitude='+c.ll[0].toFixed(5)+'&longitude='+c.ll[1].toFixed(5)
           + '&key='+encodeURIComponent(apiKey)).then(r => r.ok ? r.json() : []).catch(() => []));
         for (const arr of await Promise.all(batch)) for (const p of arr) if (!seen.has(p.ID)){ seen.add(p.ID); ocm.push(fromOCM(p)); }
