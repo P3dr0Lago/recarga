@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Recarga EV</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+    --fast:#ea580c; --slow:#16a34a; --unk:#64748b; --off:#dc2626; --accent:#2563eb;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
+  #map{position:fixed;inset:0}
+  .top{position:fixed;left:0;right:0;top:0;z-index:1000;padding:calc(env(safe-area-inset-top) + 10px) 10px 8px;
+       display:flex;flex-direction:column;gap:8px;pointer-events:none}
+  .row{display:flex;gap:8px;pointer-events:auto}
+  .search{flex:1;display:flex;background:#fff;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.18);overflow:hidden}
+  .search input{flex:1;border:0;padding:12px 14px;font-size:16px;outline:none;min-width:0}
+  .search button{border:0;background:none;padding:0 14px;font-size:18px;cursor:pointer}
+  .ibtn{width:46px;height:46px;border:0;border-radius:12px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.18);
+        font-size:20px;cursor:pointer;flex:none}
+  .chips{display:flex;gap:6px;overflow-x:auto;pointer-events:auto;padding-bottom:2px;scrollbar-width:none}
+  .chip{flex:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 12px;font-size:14px;
+        cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12);white-space:nowrap}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+  .status{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:900;
+          background:rgba(15,23,42,.88);color:#fff;font-size:13px;padding:7px 12px;border-radius:999px;max-width:92vw;
+          text-align:center}
+  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:1100;background:var(--panel);border-radius:16px 16px 0 0;
+         box-shadow:0 -4px 20px rgba(0,0,0,.25);max-height:70vh;overflow:auto;transform:translateY(105%);
+         transition:transform .22s ease;padding:8px 16px calc(env(safe-area-inset-bottom) + 16px)}
+  .sheet.open{transform:none}
+  @media(min-width:760px){.sheet{left:12px;right:auto;width:400px;bottom:12px;border-radius:16px;max-height:calc(100vh - 140px)}}
+  .grab{width:40px;height:4px;background:var(--line);border-radius:4px;margin:4px auto 10px}
+  .sheet h2{font-size:18px;margin:0 0 4px;padding-right:36px}
+  .close{position:absolute;right:10px;top:10px;border:0;background:#f1f5f9;border-radius:50%;width:32px;height:32px;
+         font-size:16px;cursor:pointer}
+  .muted{color:var(--muted);font-size:14px}
+  .badges{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+  .badge{font-size:13px;padding:4px 9px;border-radius:999px;background:#f1f5f9;font-weight:600}
+  .b-fast{background:#ffedd5;color:#9a3412}.b-slow{background:#dcfce7;color:#166534}
+  .b-ok{background:#dcfce7;color:#166534}.b-off{background:#fee2e2;color:#991b1b}.b-unk{background:#f1f5f9;color:#334155}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin:6px 0 10px}
+  td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
+  th{font-size:12px;color:var(--muted);font-weight:600}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .btn{flex:1;min-width:110px;text-align:center;text-decoration:none;border:1px solid var(--line);background:#fff;
+       color:var(--ink);padding:10px;border-radius:10px;font-size:14px;cursor:pointer;font-weight:600}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  textarea{width:100%;min-height:64px;border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit;font-size:14px}
+  .src{font-size:12px;color:var(--muted);margin-top:8px}
+  .modal{position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:16px}
+  .modal.open{display:flex}
+  .card{background:#fff;border-radius:16px;padding:18px;max-width:440px;width:100%;max-height:90vh;overflow:auto}
+  .card h3{margin:0 0 8px}
+  .card input{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px;margin:6px 0 10px}
+  .card p{font-size:14px;line-height:1.45;margin:6px 0}
+  .legend{font-size:13px;line-height:1.8}
+  .pin{border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);display:flex;align-items:center;
+       justify-content:center;color:#fff;font-size:11px;font-weight:700}
+  .pin.off{outline:2px solid var(--off);outline-offset:1px}
+  .pin.fav::after{content:"★";position:absolute;top:-9px;right:-7px;color:#facc15;font-size:13px;text-shadow:0 0 2px #000}
+  .leaflet-div-icon{background:none;border:0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+  .card label{display:block;font-size:13px;color:var(--muted);margin-top:4px}
+  .card label input,.card label select{margin:4px 0 6px;width:100%;padding:9px;border:1px solid var(--line);border-radius:10px;font-size:15px;background:#fff;color:var(--ink)}
+  .calc{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;line-height:1.6;margin-top:8px}
+  .verdict{font-weight:700}.v-good{color:#166534}.v-mid{color:#a16207}.v-bad{color:#991b1b}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
+  .stat{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
+  .stat b{display:block;font-size:15px}.stat span{font-size:11px;color:var(--muted)}
+  .seg{display:flex;background:#f1f5f9;border-radius:10px;padding:3px;margin:10px 0 4px}
+  .seg button{flex:1;border:0;background:none;padding:7px;border-radius:8px;font-size:14px;cursor:pointer;color:var(--muted)}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .entry{border-bottom:1px solid var(--line);padding:8px 0;font-size:14px}
+  .entry .del{float:right;border:0;background:none;color:var(--muted);cursor:pointer;font-size:13px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="top">
+  <div class="row">
+    <form class="search" id="searchForm">
+      <input id="q" type="search" placeholder="Buscar cidade, endereço…" autocomplete="off">
+      <button type="submit" aria-label="Buscar">🔍</button>
+    </form>
+    <button class="ibtn" id="locBtn" title="Minha localização">📍</button>
+    <button class="ibtn" id="histBtn" title="Minhas recargas">📒</button>
+    <button class="ibtn" id="cfgBtn" title="Configurações">⚙️</button>
+  </div>
+  <div class="chips" id="chips">
+    <button class="chip on" data-f="fast"><span class="dot" style="background:var(--fast)"></span>Rápido (DC)</button>
+    <button class="chip on" data-f="slow"><span class="dot" style="background:var(--slow)"></span>Lento (AC)</button>
+    <button class="chip" data-f="opOnly">Só operacionais</button>
+    <button class="chip" data-f="favOnly">★ Favoritos</button>
+    <button class="chip" data-f="ccs">CCS2</button>
+    <button class="chip" data-f="type2">Tipo 2</button>
+  </div>
+</div>
+
+<div class="status" id="status">Carregando mapa…</div>
+
+<div class="sheet" id="sheet">
+  <div class="grab"></div>
+  <button class="close" id="sheetClose" aria-label="Fechar">✕</button>
+  <div id="sheetBody"></div>
+</div>
+
+<div class="modal" id="cfg">
+  <div class="card">
+    <h3>Configurações</h3>
+    <p><b>Chave do Open Charge Map</b> (gratuita). Sem ela o app mostra só os postos do OpenStreetMap. Crie uma conta em
+      <a href="https://openchargemap.org/site/loginprovider/beginlogin" target="_blank" rel="noopener">openchargemap.org</a>
+      e gere a chave em <i>My Profile → My Apps → Register an application</i>.</p>
+    <input id="keyInput" placeholder="cole aqui sua API key" autocomplete="off">
+    <p><b>Referências para o "vale a pena?"</b></p>
+    <div class="grid2">
+      <label>Energia em casa (R$/kWh)<input id="refHome" type="number" step="0.01" inputmode="decimal"></label>
+      <label>Seu carro elétrico (km/kWh)<input id="refEff" type="number" step="0.1" inputmode="decimal"></label>
+      <label>Gasolina (R$/litro)<input id="refFuel" type="number" step="0.01" inputmode="decimal"></label>
+      <label>Carro a combustão (km/litro)<input id="refKml" type="number" step="0.1" inputmode="decimal"></label>
+    </div>
+    <div class="legend">
+      <b>Legenda</b><br>
+      <span class="dot" style="background:var(--fast)"></span>Rápido: corrente contínua (DC) ou acima de 22 kW<br>
+      <span class="dot" style="background:var(--slow)"></span>Lento: corrente alternada (AC) até 22 kW<br>
+      <span class="dot" style="background:var(--unk)"></span>Potência não informada<br>
+      <span class="dot" style="border:2px solid var(--off)"></span>Contorno vermelho: fora de operação<br>
+      O número no marcador é a potência máxima (kW).
+    </div>
+    <p class="muted">Status "disponível agora" (vaga livre/ocupada) não é publicado de forma aberta pelas redes no Brasil.
+      O app mostra o status operacional informado pela comunidade e a data da última verificação.</p>
+    <div class="actions">
+      <button class="btn" id="cfgCancel">Fechar</button>
+      <button class="btn primary" id="cfgSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="logModal">
+  <div class="card">
+    <h3>Registrar recarga</h3>
+    <div class="muted" id="logStation"></div>
+    <div class="grid2">
+      <label>Data e hora<input id="lgDate" type="datetime-local"></label>
+      <label>Energia carregada (kWh)<input id="lgKwh" type="number" step="0.1" inputmode="decimal" placeholder="ex.: 32,5"></label>
+      <label>Tempo (minutos)<input id="lgMin" type="number" step="1" inputmode="numeric" placeholder="ex.: 45"></label>
+      <label>Valor pago (R$)<input id="lgCost" type="number" step="0.01" inputmode="decimal" placeholder="0 se grátis"></label>
+      <label>Bateria no início (%)<input id="lgS0" type="number" min="0" max="100" inputmode="numeric" placeholder="opcional"></label>
+      <label>Bateria no fim (%)<input id="lgS1" type="number" min="0" max="100" inputmode="numeric" placeholder="opcional"></label>
+    </div>
+    <label>Na sua opinião, valeu a pena?
+      <select id="lgWorth"><option value="">—</option><option value="sim">Sim</option><option value="mais_ou_menos">Mais ou menos</option><option value="nao">Não</option></select>
+    </label>
+    <label>Observações<textarea id="lgNote" placeholder="fila, vaga ocupada, carregador lento, app usado…"></textarea></label>
+    <div id="lgCalc" class="calc"></div>
+    <div class="actions">
+      <button class="btn" id="lgCancel">Cancelar</button>
+      <button class="btn primary" id="lgSave">Salvar recarga</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="histModal">
+  <div class="card">
+    <h3>Minhas recargas</h3>
+    <div id="histBody"></div>
+    <details style="margin-top:10px"><summary class="muted">Copiar / restaurar dados (para trocar de aparelho)</summary>
+      <p class="muted">Os dados ficam salvos só neste aparelho. Para levar a outro, copie o texto abaixo e cole lá.</p>
+      <textarea id="backupBox" style="min-height:90px;font-size:12px"></textarea>
+      <div class="actions"><button class="btn" id="bkCopy">Copiar</button><button class="btn" id="bkCsv">Copiar como planilha</button><button class="btn" id="bkRestore">Restaurar do texto</button></div>
+    </details>
+    <div class="actions"><button class="btn primary" id="histClose">Fechar</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- armazenamento local (favoritos, notas, chave, última visão) ----------
+  const store = {
+    get(k, d){ try{ const v = localStorage.getItem('ev_'+k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+    set(k, v){ try{ localStorage.setItem('ev_'+k, JSON.stringify(v)); }catch(e){} }
+  };
+  let apiKey = store.get('key', '');
+  let favs = store.get('favs', {});      // id -> {name, lat, lon}
+  let notes = store.get('notes', {});    // id -> texto
+  let logs = store.get('logs', []);      // registros de recarga
+  let refs = Object.assign({home:0.95, eff:6.5, fuel:6.3, kml:11}, store.get('refs', {}));
+  const filters = Object.assign({fast:true, slow:true, opOnly:false, favOnly:false, ccs:false, type2:false}, store.get('filters', {}));
+
+  // ---------- mapa ----------
+  const last = store.get('view', {lat:-12.9714, lon:-38.5014, z:12}); // Salvador como ponto de partida
+  const map = L.map('map', {zoomControl:false}).setView([last.lat, last.lon], last.z);
+  L.control.zoom({position:'bottomright'}).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap · dados: Open Charge Map, OSM'
+  }).addTo(map);
+  const layer = L.layerGroup().addTo(map);
+  let meMarker = null;
+
+  const $ = id => document.getElementById(id);
+  const statusEl = $('status');
+  const setStatus = t => { statusEl.textContent = t; statusEl.style.display = t ? '' : 'none'; };
+
+  // ---------- normalização ----------
+  // Estrutura comum: {id, src, name, operator, address, lat, lon, maxKw, isDC, conns:[{type,kw,dc,qty,status}], op, statusText, verified, lastUpdate, cost, access, hours, url, comments}
+  const STATUS_OFF = new Set([100, 150, 200, 210]);
+  function fromOCM(p){
+    const a = p.AddressInfo || {};
+    const conns = (p.Connections || []).map(c => ({
+      type: (c.ConnectionType && (c.ConnectionType.FormalName || c.ConnectionType.Title)) || 'Conector',
+      typeId: c.ConnectionTypeID,
+      kw: c.PowerKW || null,
+      dc: c.CurrentTypeID === 30 || (c.CurrentType && /DC/i.test(c.CurrentType.Title||'')),
+      qty: c.Quantity || 1,
+      status: c.StatusType ? c.StatusType.Title : null,
+      statusOff: c.StatusType ? c.StatusType.IsOperational === false : false
+    }));
+    const st = p.StatusType;
+    let op = null;
+    if (st) op = st.IsOperational === true ? true : (st.IsOperational === false || STATUS_OFF.has(st.ID) ? false : null);
+    else if (STATUS_OFF.has(p.StatusTypeID)) op = false;
+    else if (p.StatusTypeID === 50) op = true;
+    const comments = (p.UserComments || []).slice().sort((x,y)=> new Date(y.DateCreated)-new Date(x.DateCreated));
+    return {
+      id: 'ocm-'+p.ID, src:'Open Charge Map', name: a.Title || 'Posto de recarga',
+      operator: p.OperatorInfo && p.OperatorInfo.Title && !/unknown/i.test(p.OperatorInfo.Title) ? p.OperatorInfo.Title : '',
+      address: [a.AddressLine1, a.Town, a.StateOrProvince].filter(Boolean).join(', '),
+      lat: a.Latitude, lon: a.Longitude, conns, op,
+      statusText: st ? translateStatus(st.Title) : (op===true?'Operacional':'Status desconhecido'),
+      verified: p.IsRecentlyVerified, lastUpdate: p.DateLastStatusUpdate || p.DateLastVerified || null,
+      cost: p.UsageCost || '', access: p.UsageType ? translateUsage(p.UsageType.Title) : '',
+      hours: a.AccessComments || '', url: 'https://openchargemap.org/site/poi/details/'+p.ID,
+      comments: comments.slice(0,3).map(c => ({date:c.DateCreated, text:c.Comment||'', rating:c.Rating, user:c.UserName}))
+    };
+  }
+  function translateStatus(t){
+    const m = {'Operational':'Operacional','Partly Operational (Mixed)':'Parcialmente operacional',
+      'Temporarily Unavailable':'Temporariamente indisponível','Planned For Future Date':'Planejado (ainda não opera)',
+      'Removed (Decommissioned)':'Desativado','Not Operational':'Fora de operação','Unknown':'Status desconhecido',
+      'Currently Available (Automated Status)':'Disponível (status automático)','Currently In Use (Automated Status)':'Em uso (status automático)'};
+    return m[t] || t || 'Status desconhecido';
+  }
+  function translateUsage(t){
+    if(!t) return '';
+    if(/Public - Pay At Location/i.test(t)) return 'Público – pagamento no local';
+    if(/Public - Membership/i.test(t)) return 'Público – exige cadastro/app';
+    if(/Public - Notice Required/i.test(t)) return 'Público – avisar antes';
+    if(/Public/i.test(t)) return 'Público';
+    if(/Private - For Staff/i.test(t)) return 'Privado – só funcionários';
+    if(/Private/i.test(t)) return 'Privado / restrito';
+    if(/Restricted/i.test(t)) return 'Restrito (clientes/hóspedes)';
+    return t;
+  }
+
+  const OSM_SOCKETS = {
+    'type2':['Tipo 2 (Mennekes)',false], 'type2_combo':['CCS2',true], 'chademo':['CHAdeMO',true],
+    'type1':['Tipo 1 (J1772)',false], 'type1_combo':['CCS1',true], 'gb_t':['GB/T AC',false], 'gb_t_dc':['GB/T DC',true],
+    'tesla_supercharger':['Tesla Supercharger',true], 'tesla_destination':['Tesla Destination',false],
+    'type2_cable':['Tipo 2 (cabo)',false], 'schuko':['Tomada comum',false], 'nbr14136':['Tomada NBR 14136',false]
+  };
+  function parseKw(v){
+    if(!v) return null;
+    const m = String(v).replace(',', '.').match(/([\d.]+)\s*(kw|w|kva)?/i);
+    if(!m) return null;
+    let n = parseFloat(m[1]); if(isNaN(n)) return null;
+    if(m[2] && m[2].toLowerCase()==='w') n = n/1000;
+    return n;
+  }
+  function fromOSM(e){
+    const t = e.tags || {};
+    const lat = e.lat || (e.center && e.center.lat), lon = e.lon || (e.center && e.center.lon);
+    const conns = [];
+    for (const k in OSM_SOCKETS){
+      const q = t['socket:'+k];
+      if (q && q !== 'no'){
+        const kw = parseKw(t['socket:'+k+':output']) || null;
+        conns.push({type:OSM_SOCKETS[k][0], kw, dc:OSM_SOCKETS[k][1], qty: parseInt(q)||1, status:null});
+      }
+    }
+    const opTag = t['disused'] === 'yes' || t['operational_status'] === 'closed' || t['lifecycle'] ? false : null;
+    return {
+      id:'osm-'+e.type+'-'+e.id, src:'OpenStreetMap', name: t.name || t.brand || t.operator || 'Posto de recarga',
+      operator: t.operator || t.brand || t.network || '',
+      address: [t['addr:street'] && (t['addr:street']+(t['addr:housenumber']?', '+t['addr:housenumber']:'')), t['addr:city']].filter(Boolean).join(' – '),
+      lat, lon, conns, op: opTag, statusText: opTag===false ? 'Desativado' : 'Status não informado',
+      verified:false, lastUpdate: t['check_date'] || null,
+      cost: t.fee==='no' ? 'Gratuito' : (t['charge'] || (t.fee==='yes'?'Pago':'')),
+      access: t.access==='private' ? 'Privado' : (t.access==='customers' ? 'Somente clientes' : (t.access ? 'Público' : '')),
+      hours: t.opening_hours || '', capacity: t.capacity || '',
+      url: 'https://www.openstreetmap.org/'+e.type+'/'+e.id, comments:[]
+    };
+  }
+
+  function speedOf(s){
+    let max = null, dc = false, known = false;
+    for (const c of s.conns){
+      if (c.kw){ max = Math.max(max||0, c.kw); known = true; }
+      if (c.dc) { dc = true; known = true; }
+      else if (c.type) known = known || /Tipo 2|Type 2|J1772|Tipo 1|Tomada|Destination/i.test(c.type);
+    }
+    let cls = 'unk';
+    if (dc || (max && max > 22)) cls = 'fast';
+    else if (known) cls = 'slow';
+    return {cls, max};
+  }
+
+  // ---------- busca de dados ----------
+  const cache = new Map();   // id -> estação
+  let reqSeq = 0;
+  async function getOCM(b){
+    if (!apiKey) return [];
+    const c = b.getCenter();
+    const radius = Math.min(60, Math.max(2, c.distanceTo(b.getNorthEast())/1000));
+    const url = 'https://api.openchargemap.io/v3/poi/?output=json&compact=false&verbose=false&includecomments=true'
+      + '&maxresults=400&distanceunit=KM&distance='+radius.toFixed(1)
+      + '&latitude='+c.lat.toFixed(5)+'&longitude='+c.lng.toFixed(5)+'&key='+encodeURIComponent(apiKey);
+    const r = await fetch(url);
+    if (r.status === 401 || r.status === 403) throw new Error('Chave do Open Charge Map recusada – confira em ⚙️');
+    if (!r.ok) throw new Error('Open Charge Map: erro '+r.status);
+    return (await r.json()).map(fromOCM);
+  }
+  async function getOSM(b){
+    const s = b.getSouth(), w = b.getWest(), n = b.getNorth(), e = b.getEast();
+    const q = `[out:json][timeout:25];nwr["amenity"="charging_station"](${s},${w},${n},${e});out center tags 500;`;
+    const r = await fetch('https://overpass-api.de/api/interpreter', {method:'POST', body:'data='+encodeURIComponent(q),
+      headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+    if (!r.ok) throw new Error('OpenStreetMap: erro '+r.status);
+    return ((await r.json()).elements || []).map(fromOSM);
+  }
+
+  // Junta as duas fontes: se um ponto do OSM estiver a menos de 60 m de um do OCM, considera o mesmo posto
+  function merge(ocm, osm){
+    const out = [...ocm];
+    for (const o of osm){
+      if (o.lat == null) continue;
+      const twin = ocm.find(p => L.latLng(p.lat,p.lon).distanceTo([o.lat,o.lon]) < 60);
+      if (twin){
+        if (!twin.hours && o.hours) twin.hours = o.hours;
+        if (!twin.operator && o.operator) twin.operator = o.operator;
+        if (!twin.cost && o.cost) twin.cost = o.cost;
+        if (!twin.conns.length && o.conns.length) twin.conns = o.conns;
+        twin.osmUrl = o.url;
+      } else out.push(o);
+    }
+    return out;
+  }
+
+  async function load(){
+    const z = map.getZoom();
+    if (z < 9){ setStatus('Aproxime o mapa para ver os postos'); layer.clearLayers(); return; }
+    const my = ++reqSeq;
+    setStatus('Buscando postos…');
+    const b = map.getBounds();
+    const [ocmR, osmR] = await Promise.allSettled([getOCM(b), getOSM(b)]);
+    if (my !== reqSeq) return;
+    const errs = [];
+    const ocm = ocmR.status==='fulfilled' ? ocmR.value : (errs.push(ocmR.reason.message), []);
+    const osm = osmR.status==='fulfilled' ? osmR.value : (errs.push(osmR.reason.message), []);
+    merge(ocm, osm).forEach(s => cache.set(s.id, s));
+    render();
+    const shown = layer.getLayers().length;
+    let msg = shown + ' posto' + (shown===1?'':'s') + ' na área';
+    if (!apiKey) msg += ' · só OSM (adicione a chave em ⚙️)';
+    if (errs.length) msg += ' · ' + errs.join(' · ');
+    setStatus(msg);
+  }
+
+  function passes(s, sp){
+    if (filters.favOnly && !favs[s.id]) return false;
+    if (filters.opOnly && s.op !== true) return false;
+    if (sp.cls==='fast' && !filters.fast) return false;
+    if (sp.cls==='slow' && !filters.slow) return false;
+    if (sp.cls==='unk' && !(filters.fast && filters.slow)) return false;
+    if (filters.ccs && !s.conns.some(c => /CCS|Combo/i.test(c.type))) return false;
+    if (filters.type2 && !s.conns.some(c => /Tipo 2|Type 2|Mennekes|IEC 62196-2/i.test(c.type))) return false;
+    return true;
+  }
+
+  function render(){
+    layer.clearLayers();
+    const b = map.getBounds().pad(0.2);
+    for (const s of cache.values()){
+      if (s.lat == null || !b.contains([s.lat, s.lon])) continue;
+      const sp = speedOf(s);
+      if (!passes(s, sp)) continue;
+      const color = sp.cls==='fast' ? 'var(--fast)' : sp.cls==='slow' ? 'var(--slow)' : 'var(--unk)';
+      const size = sp.cls==='fast' ? 30 : 24;
+      const label = sp.max ? Math.round(sp.max) : (sp.cls==='fast' ? '⚡' : '');
+      const html = `<div class="pin ${s.op===false?'off':''} ${favs[s.id]?'fav':''}" style="position:relative;width:${size}px;height:${size}px;background:${color};opacity:${s.op===false?.55:1}">${label}</div>`;
+      L.marker([s.lat, s.lon], {icon: L.divIcon({html, iconSize:[size,size], iconAnchor:[size/2,size/2], className:''})})
+        .on('click', () => openSheet(s)).addTo(layer);
+    }
+  }
+
+  // ---------- painel de detalhes ----------
+  const esc = t => String(t==null?'':t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmtDate = d => { try{ return new Date(d).toLocaleDateString('pt-BR'); }catch(e){ return d; } };
+  function distTxt(s){
+    if (!meMarker) return '';
+    const m = meMarker.getLatLng().distanceTo([s.lat, s.lon]);
+    return m < 1000 ? Math.round(m)+' m de você' : (m/1000).toFixed(1).replace('.', ',')+' km de você';
+  }
+  function openSheet(s){
+    const sp = speedOf(s);
+    const speedBadge = sp.cls==='fast' ? '<span class="badge b-fast">⚡ Rápido</span>'
+      : sp.cls==='slow' ? '<span class="badge b-slow">Lento</span>' : '<span class="badge b-unk">Velocidade ?</span>';
+    const opBadge = s.op===true ? `<span class="badge b-ok">● ${esc(s.statusText)}</span>`
+      : s.op===false ? `<span class="badge b-off">● ${esc(s.statusText)}</span>` : `<span class="badge b-unk">● ${esc(s.statusText)}</span>`;
+    const rows = s.conns.length ? s.conns.map(c => `<tr><td>${esc(c.type)}</td><td>${c.dc?'DC':'AC'}</td><td>${c.kw?esc(c.kw)+' kW':'–'}</td><td>${c.qty||1}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="muted">Conectores não informados</td></tr>';
+    const fav = !!favs[s.id];
+    const gm = `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}`;
+    const wz = `https://waze.com/ul?ll=${s.lat},${s.lon}&navigate=yes`;
+    const comments = (s.comments||[]).filter(c=>c.text).map(c => `<p style="font-size:13px;margin:6px 0"><b>${fmtDate(c.date)}</b>${c.user?' · '+esc(c.user):''}: ${esc(c.text)}</p>`).join('');
+    $('sheetBody').innerHTML = `
+      <h2>${esc(s.name)}</h2>
+      <div class="muted">${esc([s.operator, s.address].filter(Boolean).join(' · '))}</div>
+      <div class="muted">${distTxt(s)}</div>
+      <div class="badges">${speedBadge}${opBadge}${sp.max?`<span class="badge">até ${Math.round(sp.max)} kW</span>`:''}${s.verified?'<span class="badge b-ok">verificado recentemente</span>':''}</div>
+      <table><tr><th>Conector</th><th>Tipo</th><th>Potência</th><th>Qtd</th></tr>${rows}</table>
+      ${s.access?`<div class="muted">Acesso: ${esc(s.access)}</div>`:''}
+      ${s.cost?`<div class="muted">Custo: ${esc(s.cost)}</div>`:''}
+      ${s.hours?`<div class="muted">Horário/observações: ${esc(s.hours)}</div>`:''}
+      ${s.lastUpdate?`<div class="muted">Última atualização do status: ${fmtDate(s.lastUpdate)}</div>`:''}
+      <div class="actions">
+        <a class="btn primary" href="${gm}" target="_blank" rel="noopener">Google Maps</a>
+        <a class="btn primary" href="${wz}" target="_blank" rel="noopener">Waze</a>
+        <button class="btn" id="favBtn">${fav?'★ Favorito':'☆ Favoritar'}</button>
+      </div>
+      <button class="btn primary" id="logBtn" style="width:100%;background:#16a34a;border-color:#16a34a">🔌 Registrar uma recarga aqui</button>
+      ${stationSummary(s.id)}
+      ${comments?`<div><b style="font-size:14px">Relatos recentes de usuários</b>${comments}</div>`:''}
+      <div style="margin-top:8px"><b style="font-size:14px">Minhas anotações</b>
+        <textarea id="noteBox" placeholder="Ex.: 15/11 – funcionou, 1 vaga livre, precisa do app X">${esc(notes[s.id]||'')}</textarea></div>
+      <div class="src">Fonte: <a href="${s.url}" target="_blank" rel="noopener">${s.src}</a>${s.osmUrl?` + <a href="${s.osmUrl}" target="_blank" rel="noopener">OpenStreetMap</a>`:''}</div>`;
+    $('favBtn').onclick = () => {
+      if (favs[s.id]) delete favs[s.id]; else favs[s.id] = {name:s.name, lat:s.lat, lon:s.lon};
+      store.set('favs', favs); render(); openSheet(s);
+    };
+    $('logBtn').onclick = () => openLog(s);
+    $('noteBox').oninput =e => { const v = e.target.value.trim(); if (v) notes[s.id] = v; else delete notes[s.id]; store.set('notes', notes); };
+    $('sheet').classList.add('open');
+  }
+  $('sheetClose').onclick = () => $('sheet').classList.remove('open');
+  map.on('click', () => $('sheet').classList.remove('open'));
+
+  // ---------- registro de recargas e "vale a pena?" ----------
+  const brl = v => (v||0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+  const num = (v, d=1) => (v==null || isNaN(v)) ? '–' : v.toFixed(d).replace('.', ',');
+  const val = id => { const v = parseFloat(String($(id).value).replace(',', '.')); return isNaN(v) ? null : v; };
+
+  function analyze(e){
+    const r = {};
+    if (e.kwh > 0){
+      r.km = e.kwh * refs.eff;
+      if (e.cost != null){
+        r.perKwh = e.cost / e.kwh;
+        r.per100 = r.perKwh * 100 / refs.eff;
+        r.gas100 = refs.fuel * 100 / refs.kml;
+        r.gasSame = r.km / refs.kml * refs.fuel;
+        r.saving = r.gasSame - e.cost;
+        r.homeSame = e.kwh * refs.home;
+      }
+      if (e.min > 0) r.avgKw = e.kwh / (e.min/60);
+    }
+    if (r.per100 != null){
+      const ratio = r.per100 / r.gas100;
+      if (e.cost === 0) r.verdict = ['good','Vale muito a pena: foi de graça'];
+      else if (ratio <= 0.5) r.verdict = ['good','Vale a pena: custou menos da metade da gasolina'];
+      else if (ratio <= 0.9) r.verdict = ['mid','Razoável: mais barato que gasolina, mas pouco'];
+      else r.verdict = ['bad','Não compensou: ficou igual ou mais caro que gasolina'];
+    }
+    return r;
+  }
+  function calcHtml(e){
+    const r = analyze(e);
+    if (r.perKwh == null && r.avgKw == null) return '<span class="muted">Preencha kWh e valor para ver a análise.</span>';
+    let h = '';
+    if (r.verdict) h += `<div class="verdict v-${r.verdict[0]}">${r.verdict[1]}</div>`;
+    if (r.perKwh != null) h += `Preço da energia: <b>${brl(r.perKwh)}/kWh</b> (em casa: ${brl(refs.home)}/kWh)<br>`;
+    if (r.km != null) h += `Autonomia ganha: ~<b>${num(r.km,0)} km</b><br>`;
+    if (r.per100 != null) h += `Custo por 100 km: <b>${brl(r.per100)}</b> · gasolina: ${brl(r.gas100)}<br>`;
+    if (r.saving != null) h += `Economia vs. gasolina: <b>${brl(r.saving)}</b> · em casa teria custado ${brl(r.homeSame)}<br>`;
+    if (r.avgKw != null) h += `Velocidade média: <b>${num(r.avgKw)} kW</b>`;
+    return h;
+  }
+
+  let logTarget = null;
+  function openLog(s){
+    logTarget = s;
+    $('logStation').textContent = s.name + (s.address ? ' · ' + s.address : '');
+    const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    $('lgDate').value = d.toISOString().slice(0,16);
+    ['lgKwh','lgMin','lgCost','lgS0','lgS1','lgNote'].forEach(id => $(id).value = '');
+    $('lgWorth').value = '';
+    updLogCalc();
+    $('logModal').classList.add('open');
+  }
+  const readLog = () => ({kwh: val('lgKwh'), min: val('lgMin'), cost: val('lgCost')});
+  function updLogCalc(){ $('lgCalc').innerHTML = calcHtml(readLog()); }
+  ['lgKwh','lgMin','lgCost'].forEach(id => $(id).addEventListener('input', updLogCalc));
+  $('lgCancel').onclick = () => $('logModal').classList.remove('open');
+  $('lgSave').onclick = () => {
+    const e = readLog();
+    if (!e.kwh && !e.min && e.cost == null){ $('lgCalc').innerHTML = '<span class="v-bad">Preencha pelo menos kWh, tempo ou valor.</span>'; return; }
+    logs.push(Object.assign(e, {
+      id: Date.now(), station: logTarget.id, name: logTarget.name, lat: logTarget.lat, lon: logTarget.lon,
+      date: $('lgDate').value, s0: val('lgS0'), s1: val('lgS1'), worth: $('lgWorth').value, note: $('lgNote').value.trim()
+    }));
+    store.set('logs', logs);
+    $('logModal').classList.remove('open');
+    openSheet(logTarget);
+  };
+
+  function stationSummary(id){
+    const L2 = logs.filter(l => l.station === id);
+    if (!L2.length) return '';
+    const kwh = L2.reduce((a,l)=>a+(l.kwh||0),0), cost = L2.reduce((a,l)=>a+(l.cost||0),0);
+    const withKw = L2.filter(l=>l.kwh&&l.min);
+    const avgKw = withKw.length ? withKw.reduce((a,l)=>a+l.kwh/(l.min/60),0)/withKw.length : null;
+    const yes = L2.filter(l=>l.worth==='sim').length, no = L2.filter(l=>l.worth==='nao').length;
+    return `<div class="calc"><b>Suas ${L2.length} recarga${L2.length>1?'s':''} aqui</b><br>
+      ${kwh?`Média: ${brl(cost/kwh)}/kWh · `:''}${avgKw?`${num(avgKw)} kW em média`:''}<br>
+      ${(yes||no)?`Valeu a pena: ${yes} sim · ${no} não`:''}</div>`;
+  }
+
+  // ---------- gráfico de gastos (SVG próprio, sem bibliotecas) ----------
+  let chartMode = store.get('chart', 'week');
+  const MES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  function weekStart(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay()+6)%7)); return x; }
+  function buckets(mode){
+    const n = 12, out = [], now = new Date();
+    for (let i = n-1; i >= 0; i--){
+      let start, end, label;
+      if (mode === 'week'){
+        start = weekStart(now); start.setDate(start.getDate() - 7*i);
+        end = new Date(start); end.setDate(end.getDate() + 7);
+        label = String(start.getDate()).padStart(2,'0') + '/' + String(start.getMonth()+1).padStart(2,'0');
+      } else {
+        start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+        label = MES[start.getMonth()] + (start.getMonth()===0 ? '/'+String(start.getFullYear()).slice(2) : '');
+      }
+      const inB = logs.filter(l => { const d = new Date(l.date); return d >= start && d < end; });
+      out.push({label, cost: inB.reduce((a,l)=>a+(l.cost||0),0), kwh: inB.reduce((a,l)=>a+(l.kwh||0),0), n: inB.length});
+    }
+    return out;
+  }
+  function chartSvg(mode){
+    const B = buckets(mode), W = 400, H = 210, padL = 8, padB = 28, padT = 26, bw = (W - padL*2) / B.length;
+    const max = Math.max(1, ...B.map(b => b.cost));
+    const total = B.reduce((a,b)=>a+b.cost,0), totKwh = B.reduce((a,b)=>a+b.kwh,0);
+    const withData = B.filter(b => b.n).length || 1;
+    let bars = '';
+    B.forEach((b, i) => {
+      const h = (H - padT - padB) * b.cost / max, x = padL + i*bw + bw*0.15, y = H - padB - h, w = bw*0.7;
+      const last = i === B.length - 1;
+      bars += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(h, b.n?2:0)}" rx="3" fill="${last?'#2563eb':'#93c5fd'}"><title>${b.label}: ${brl(b.cost)} · ${num(b.kwh)} kWh · ${b.n} recarga(s)</title></rect>`;
+      if (b.cost > 0) bars += `<text x="${x+w/2}" y="${y-4}" text-anchor="middle" font-size="9" fill="#334155">${Math.round(b.cost)}</text>`;
+      bars += `<text x="${x+w/2}" y="${H-padB+13}" text-anchor="middle" font-size="9" fill="#64748b">${b.label}</text>`;
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Gastos ${mode==='week'?'semanais':'mensais'}">
+      <text x="${padL}" y="14" font-size="11" fill="#64748b">Gasto em R$ por ${mode==='week'?'semana (início na segunda)':'mês'} · últimos 12</text>
+      <line x1="${padL}" x2="${W-padL}" y1="${H-padB}" y2="${H-padB}" stroke="#e2e8f0"/>${bars}</svg>
+      <div class="muted" style="font-size:13px">No período: <b>${brl(total)}</b> · ${num(totKwh,0)} kWh · média de ${brl(total/withData)} por ${mode==='week'?'semana':'mês'} com recarga</div>`;
+  }
+
+  function fmtDT(d){ try{ return new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}); }catch(e){ return d; } }
+  function openHist(){
+    const sorted = logs.slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+    const kwh = logs.reduce((a,l)=>a+(l.kwh||0),0), cost = logs.reduce((a,l)=>a+(l.cost||0),0);
+    const mins = logs.reduce((a,l)=>a+(l.min||0),0);
+    const saving = logs.reduce((a,l)=>{ const r = analyze(l); return a + (r.saving||0); },0);
+    let h = `<div class="stats">
+      <div class="stat"><b>${logs.length}</b><span>recargas</span></div>
+      <div class="stat"><b>${num(kwh,0)}</b><span>kWh no total</span></div>
+      <div class="stat"><b>${brl(cost)}</b><span>gasto total</span></div>
+      <div class="stat"><b>${kwh?brl(cost/kwh):'–'}</b><span>média por kWh</span></div>
+      <div class="stat"><b>${Math.floor(mins/60)}h${String(Math.round(mins%60)).padStart(2,'0')}</b><span>tempo carregando</span></div>
+      <div class="stat"><b>${brl(saving)}</b><span>economia vs. gasolina</span></div></div>`;
+    if (logs.length) h += `<div class="seg"><button class="${chartMode==='week'?'on':''}" data-m="week">Semanal</button><button class="${chartMode==='month'?'on':''}" data-m="month">Mensal</button></div>${chartSvg(chartMode)}`;
+    if (!sorted.length) h += '<p class="muted">Nenhuma recarga ainda. Toque num posto no mapa e use "Registrar uma recarga aqui".</p>';
+    for (const l of sorted){
+      const r = analyze(l);
+      const w = {sim:'👍 valeu', nao:'👎 não valeu', mais_ou_menos:'🤷 mais ou menos'}[l.worth] || '';
+      h += `<div class="entry"><button class="del" data-id="${l.id}">apagar</button>
+        <b>${esc(l.name)}</b><br><span class="muted">${fmtDT(l.date)}</span><br>
+        ${l.kwh!=null?num(l.kwh)+' kWh · ':''}${l.min!=null?Math.round(l.min)+' min · ':''}${l.cost!=null?brl(l.cost):''}
+        ${r.perKwh!=null?' · '+brl(r.perKwh)+'/kWh':''}${r.avgKw!=null?' · '+num(r.avgKw)+' kW':''}
+        ${(l.s0!=null&&l.s1!=null)?`<br>Bateria ${l.s0}% → ${l.s1}%`:''}
+        ${r.verdict?`<br><span class="verdict v-${r.verdict[0]}">${r.verdict[1]}</span>`:''} ${w}
+        ${l.note?`<br><span class="muted">${esc(l.note)}</span>`:''}</div>`;
+    }
+    $('histBody').innerHTML = h;
+    $('histBody').querySelectorAll('.seg button').forEach(b => b.onclick = () => { chartMode = b.dataset.m; store.set('chart', chartMode); openHist(); });
+    $('histBody').querySelectorAll('.del').forEach(b => b.onclick = () => {
+      logs = logs.filter(l => String(l.id) !== b.dataset.id); store.set('logs', logs); openHist();
+    });
+    $('backupBox').value = JSON.stringify({logs, favs, notes, refs});
+    $('histModal').classList.add('open');
+  }
+  $('histBtn').onclick = openHist;
+  $('histClose').onclick = () => $('histModal').classList.remove('open');
+  async function copyText(t, btn){
+    try{ await navigator.clipboard.writeText(t); btn.textContent = 'Copiado ✓'; }
+    catch(e){ $('backupBox').value = t; $('backupBox').select(); btn.textContent = 'Selecione e copie'; }
+  }
+  $('bkCopy').onclick = e => copyText(JSON.stringify({logs, favs, notes, refs}), e.target);
+  $('bkCsv').onclick = e => {
+    const head = 'data;posto;kwh;minutos;valor_rs;rs_por_kwh;kw_medio;bateria_ini;bateria_fim;valeu;obs';
+    const rows = logs.map(l => { const r = analyze(l); return [l.date, l.name, l.kwh, l.min, l.cost,
+      r.perKwh!=null?r.perKwh.toFixed(2):'', r.avgKw!=null?r.avgKw.toFixed(1):'', l.s0, l.s1, l.worth, l.note]
+      .map(v => String(v==null?'':v).replace(/;/g, ',').replace(/\./g, ',')).join(';'); });
+    copyText([head, ...rows].join('\n'), e.target);
+  };
+  $('bkRestore').onclick = e => {
+    try{
+      const d = JSON.parse($('backupBox').value);
+      if (Array.isArray(d.logs)) { logs = d.logs; store.set('logs', logs); }
+      if (d.favs) { favs = d.favs; store.set('favs', favs); }
+      if (d.notes) { notes = d.notes; store.set('notes', notes); }
+      if (d.refs) { refs = Object.assign(refs, d.refs); store.set('refs', refs); }
+      render(); openHist();
+    }catch(err){ e.target.textContent = 'Texto inválido'; }
+  };
+
+  // ---------- filtros ----------
+  document.querySelectorAll('.chip').forEach(ch => {
+    const f = ch.dataset.f; ch.classList.toggle('on', !!filters[f]);
+    ch.onclick = () => { filters[f] = !filters[f]; ch.classList.toggle('on', filters[f]); store.set('filters', filters); render(); };
+  });
+
+  // ---------- localização ----------
+  $('locBtn').onclick = () => {
+    if (!navigator.geolocation){ setStatus('Este navegador não informa a localização'); return; }
+    setStatus('Obtendo sua localização…');
+    navigator.geolocation.getCurrentPosition(p => {
+      const ll = [p.coords.latitude, p.coords.longitude];
+      if (meMarker) meMarker.setLatLng(ll);
+      else meMarker = L.circleMarker(ll, {radius:8, color:'#fff', weight:3, fillColor:'#2563eb', fillOpacity:1}).addTo(map);
+      map.setView(ll, Math.max(map.getZoom(), 13));
+    }, err => setStatus('Localização indisponível: '+(err.code===1?'permissão negada':'tente novamente')),
+    {enableHighAccuracy:true, timeout:12000});
+  };
+
+  // ---------- busca de endereço (Nominatim/OSM) ----------
+  $('searchForm').onsubmit = async ev => {
+    ev.preventDefault();
+    const q = $('q').value.trim(); if (!q) return;
+    setStatus('Procurando "'+q+'"…');
+    try{
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=pt-BR&q='+encodeURIComponent(q));
+      const j = await r.json();
+      if (!j.length){ setStatus('Endereço não encontrado'); return; }
+      map.setView([+j[0].lat, +j[0].lon], 13);
+      $('q').blur();
+    }catch(e){ setStatus('Falha na busca de endereço'); }
+  };
+
+  // ---------- configurações ----------
+  const refIds = {home:'refHome', eff:'refEff', fuel:'refFuel', kml:'refKml'};
+  $('cfgBtn').onclick = () => {
+    $('keyInput').value = apiKey;
+    for (const k in refIds) $(refIds[k]).value = refs[k];
+    $('cfg').classList.add('open');
+  };
+  $('cfgCancel').onclick = () => $('cfg').classList.remove('open');
+  $('cfgSave').onclick = () => {
+    for (const k in refIds){ const v = val(refIds[k]); if (v > 0) refs[k] = v; }
+    store.set('refs', refs);
+    apiKey = $('keyInput').value.trim(); store.set('key', apiKey);
+    $('cfg').classList.remove('open'); cache.clear(); load();
+  };
+
+  // ---------- recarregar ao mover o mapa ----------
+  let t = null;
+  map.on('moveend', () => {
+    const c = map.getCenter(); store.set('view', {lat:c.lat, lon:c.lng, z:map.getZoom()});
+    render(); clearTimeout(t); t = setTimeout(load, 600);
+  });
+  load();
+  if (!apiKey) setTimeout(() => $('cfg').classList.add('open'), 800);
+})();
+</script>
+</body>
+</html>
