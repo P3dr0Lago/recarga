@@ -13,121 +13,191 @@
 <meta name="apple-mobile-web-app-title" content="Recarga EV">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
 <style>
   :root{
-    --bg:#0f172a; --panel:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
-    --fast:#ea580c; --slow:#16a34a; --unk:#64748b; --off:#dc2626; --accent:#2563eb;
+    --panel:#ffffff; --soft:#f1f5f9; --soft2:#f8fafc; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+    --fast:#ea580c; --slow:#16a34a; --unk:#64748b; --off:#dc2626; --accent:#2563eb; --accent-ink:#ffffff;
+    --shadow:0 2px 12px rgba(15,23,42,.18); --navh:calc(62px + env(safe-area-inset-bottom));
+    --ok-bg:#dcfce7; --ok-ink:#166534; --bad-bg:#fee2e2; --bad-ink:#991b1b; --mid-bg:#fef9c3; --mid-ink:#854d0e;
+    --fast-bg:#ffedd5; --fast-ink:#9a3412; --new-bg:#dbeafe; --new-ink:#1e40af;
+    color-scheme: light;
   }
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
-  #map{position:fixed;inset:0}
-  .top{position:fixed;left:0;right:0;top:0;z-index:1000;padding:calc(env(safe-area-inset-top) + 10px) 10px 8px;
-       display:flex;flex-direction:column;gap:8px;pointer-events:none}
-  .row{display:flex;gap:8px;pointer-events:auto}
-  .search{flex:1;display:flex;background:#fff;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.18);overflow:hidden}
-  .search input{flex:1;border:0;padding:12px 14px;font-size:16px;outline:none;min-width:0}
-  .search button{border:0;background:none;padding:0 14px;font-size:18px;cursor:pointer}
-  .ibtn{width:46px;height:46px;border:0;border-radius:12px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.18);
-        font-size:20px;cursor:pointer;flex:none}
-  .chips{display:flex;gap:6px;overflow-x:auto;pointer-events:auto;padding-bottom:2px;scrollbar-width:none}
-  .chip{flex:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 12px;font-size:14px;
-        cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12);white-space:nowrap}
-  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
-  .status{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 14px);z-index:900;
-          background:rgba(15,23,42,.88);color:#fff;font-size:13px;padding:7px 12px;border-radius:999px;max-width:92vw;
-          text-align:center}
-  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:1100;background:var(--panel);border-radius:16px 16px 0 0;
-         box-shadow:0 -4px 20px rgba(0,0,0,.25);max-height:70vh;overflow:auto;transform:translateY(105%);
-         transition:transform .22s ease;padding:8px 16px calc(env(safe-area-inset-bottom) + 16px)}
+  [data-theme="dark"]{
+    --panel:#0f172a; --soft:#1e293b; --soft2:#162032; --ink:#e2e8f0; --muted:#94a3b8; --line:#273449;
+    --accent:#3b82f6; --shadow:0 2px 14px rgba(0,0,0,.55);
+    --ok-bg:#14532d; --ok-ink:#bbf7d0; --bad-bg:#7f1d1d; --bad-ink:#fecaca; --mid-bg:#713f12; --mid-ink:#fef08a;
+    --fast-bg:#7c2d12; --fast-ink:#fed7aa; --new-bg:#1e3a8a; --new-ink:#bfdbfe;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--panel)}
+  svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  #map{position:fixed;top:0;left:0;right:0;bottom:var(--navh);background:var(--soft)}
+  [data-theme="dark"] .leaflet-control-attribution{background:rgba(15,23,42,.75)!important;color:#94a3b8}
+  [data-theme="dark"] .leaflet-control-attribution a{color:#93c5fd}
+  /* topo */
+  .top{position:fixed;left:0;right:0;top:0;z-index:1000;padding:calc(env(safe-area-inset-top) + 10px) 10px 0;pointer-events:none}
+  .row{display:flex;gap:8px;pointer-events:auto;max-width:640px}
+  .search{flex:1;display:flex;align-items:center;background:var(--panel);border-radius:14px;box-shadow:var(--shadow);min-width:0;position:relative}
+  .search svg{margin-left:12px;color:var(--muted)}
+  .search input{flex:1;border:0;padding:13px 10px;font-size:16px;outline:none;min-width:0;background:transparent;color:var(--ink)}
+  .fbtn{display:flex;align-items:center;gap:6px;border:0;border-radius:14px;background:var(--panel);color:var(--ink);box-shadow:var(--shadow);
+        padding:0 14px;font-size:15px;font-weight:600;cursor:pointer;position:relative;flex:none}
+  .fbtn .cnt{background:var(--accent);color:#fff;border-radius:999px;font-size:12px;min-width:20px;height:20px;line-height:20px;text-align:center;padding:0 6px}
+  .ac{position:absolute;left:0;right:0;top:calc(100% + 6px);background:var(--panel);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;z-index:5;display:none}
+  .ac.on{display:block}
+  .ac div{padding:11px 14px;font-size:14px;border-bottom:1px solid var(--line);cursor:pointer;line-height:1.35}
+  .ac div:last-child{border-bottom:0}
+  .ac div small{display:block;color:var(--muted);font-size:12px}
+  .ac div:active,.ac div.hl{background:var(--soft)}
+  .card .acwrap{position:relative}
+  .card .ac{top:calc(100% - 4px)}
+  /* status e avisos */
+  .status{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 68px);z-index:900;
+          background:rgba(15,23,42,.9);color:#fff;font-size:13px;padding:7px 13px;border-radius:999px;max-width:92vw;text-align:center;
+          transition:opacity .3s;pointer-events:none}
+  .status.hide{opacity:0}
+  .toast{position:fixed;left:50%;bottom:calc(var(--navh) + 84px);transform:translate(-50%,20px);z-index:1300;background:#0f172a;color:#fff;
+         border-radius:12px;padding:11px 14px;font-size:14px;display:flex;gap:14px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.35);
+         opacity:0;pointer-events:none;transition:all .25s;max-width:92vw}
+  [data-theme="dark"] .toast{background:#e2e8f0;color:#0f172a}
+  .toast.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+  .toast button{border:0;background:none;color:#60a5fa;font-weight:700;font-size:14px;cursor:pointer;padding:0}
+  /* botões flutuantes */
+  .fab{position:fixed;right:12px;z-index:950;width:50px;height:50px;border-radius:50%;border:0;background:var(--panel);color:var(--ink);
+       box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;cursor:pointer}
+  #locBtn{bottom:calc(var(--navh) + 16px);color:var(--accent)}
+  #listBtn{bottom:calc(var(--navh) + 76px)}
+  #locBtn.busy svg{animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .cta{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--navh) + 16px);z-index:950;border:0;border-radius:999px;
+       background:linear-gradient(180deg,#3b82f6,#1d4ed8);color:#fff;font-size:16px;font-weight:700;padding:14px 22px;
+       box-shadow:0 4px 16px rgba(29,78,216,.45);display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap}
+  .cta svg{fill:#fff;stroke:none}
+  .here{position:fixed;left:10px;right:10px;top:calc(env(safe-area-inset-top) + 68px);z-index:940;background:var(--panel);border-radius:12px;
+        box-shadow:var(--shadow);padding:10px 12px;font-size:14px;display:none;max-width:520px}
+  .here.on{display:block}
+  .chpill{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 108px);z-index:945;border:0;border-radius:999px;
+          background:#16a34a;color:#fff;font-weight:700;padding:8px 14px;box-shadow:var(--shadow);cursor:pointer;font-size:14px}
+  /* navegação inferior */
+  .nav{position:fixed;left:0;right:0;bottom:0;height:var(--navh);z-index:1150;background:var(--panel);border-top:1px solid var(--line);
+       display:flex;padding-bottom:env(safe-area-inset-bottom)}
+  .nav button{flex:1;border:0;background:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+              font-size:12px;font-weight:600;cursor:pointer;position:relative}
+  .nav button.on{color:var(--accent)}
+  .nav button.on::before{content:"";position:absolute;top:0;left:30%;right:30%;height:3px;border-radius:0 0 3px 3px;background:var(--accent)}
+  /* folha inferior */
+  .sheet{position:fixed;left:0;right:0;bottom:var(--navh);z-index:1100;background:var(--panel);border-radius:18px 18px 0 0;
+         box-shadow:0 -4px 20px rgba(0,0,0,.25);max-height:calc(100% - var(--navh) - 70px);overflow:auto;transform:translateY(120%);
+         transition:transform .22s ease;padding:8px 16px 16px;overscroll-behavior:contain}
   .sheet.open{transform:none}
-  @media(min-width:760px){.sheet{left:12px;right:auto;width:400px;bottom:12px;border-radius:16px;max-height:calc(100vh - 140px)}}
+  @media(min-width:760px){.sheet{left:12px;right:auto;width:410px;bottom:calc(var(--navh) + 12px);border-radius:18px;max-height:calc(100% - var(--navh) - 100px)}
+    .nav{justify-content:center}.nav button{flex:none;width:120px}}
   .grab{width:40px;height:4px;background:var(--line);border-radius:4px;margin:4px auto 10px}
-  .sheet h2{font-size:18px;margin:0 0 4px;padding-right:36px}
-  .close{position:absolute;right:10px;top:10px;border:0;background:#f1f5f9;border-radius:50%;width:32px;height:32px;
-         font-size:16px;cursor:pointer}
+  .sheet h2{font-size:19px;margin:0 0 4px;padding-right:40px;line-height:1.25}
+  .close{position:absolute;right:10px;top:10px;border:0;background:var(--soft);color:var(--ink);border-radius:50%;width:34px;height:34px;font-size:16px;cursor:pointer}
   .muted{color:var(--muted);font-size:14px}
   .badges{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
-  .badge{font-size:13px;padding:4px 9px;border-radius:999px;background:#f1f5f9;font-weight:600}
-  .b-fast{background:#ffedd5;color:#9a3412}.b-slow{background:#dcfce7;color:#166534}
-  .b-ok{background:#dcfce7;color:#166534}.b-off{background:#fee2e2;color:#991b1b}.b-unk{background:#f1f5f9;color:#334155}
+  .badge{font-size:13px;padding:4px 9px;border-radius:999px;background:var(--soft);font-weight:600}
+  .b-fast{background:var(--fast-bg);color:var(--fast-ink)}.b-slow,.b-ok{background:var(--ok-bg);color:var(--ok-ink)}
+  .b-off{background:var(--bad-bg);color:var(--bad-ink)}.b-unk{background:var(--soft);color:var(--muted)}
+  .b-mid{background:var(--mid-bg);color:var(--mid-ink)}.b-new{background:var(--new-bg);color:var(--new-ink)}
   table{width:100%;border-collapse:collapse;font-size:14px;margin:6px 0 10px}
   td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
   th{font-size:12px;color:var(--muted);font-weight:600}
   .actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
-  .btn{flex:1;min-width:110px;text-align:center;text-decoration:none;border:1px solid var(--line);background:#fff;
-       color:var(--ink);padding:10px;border-radius:10px;font-size:14px;cursor:pointer;font-weight:600}
+  .btn{flex:1;min-width:100px;text-align:center;text-decoration:none;border:1px solid var(--line);background:var(--panel);
+       color:var(--ink);padding:11px 10px;border-radius:12px;font-size:14px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px}
   .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-  textarea{width:100%;min-height:64px;border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit;font-size:14px}
+  .btn.green{background:#16a34a;border-color:#16a34a;color:#fff}
+  .btn.big{font-size:16px;padding:14px;border-radius:14px}
+  .btn:disabled{opacity:.5}
+  .btn.sm{min-width:0;flex:none;padding:7px 11px;font-size:13px}
+  textarea{width:100%;min-height:64px;border:1px solid var(--line);border-radius:10px;padding:8px;font:inherit;font-size:14px;background:var(--panel);color:var(--ink)}
   .src{font-size:12px;color:var(--muted);margin-top:8px}
-  .modal{position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:16px}
+  .src a,.card a{color:var(--accent)}
+  .more{margin-top:10px;border-top:1px solid var(--line)}
+  .more>summary{list-style:none;cursor:pointer;padding:12px 0;font-weight:600;font-size:15px;display:flex;justify-content:space-between}
+  .more>summary::-webkit-details-marker{display:none}
+  .more>summary::after{content:"▾";color:var(--muted)}
+  .more[open]>summary::after{content:"▴"}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px;margin:6px 0}
+  .kv span:nth-child(odd){color:var(--muted)}
+  /* janelas */
+  .modal{position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:16px}
   .modal.open{display:flex}
-  .card{background:#fff;border-radius:16px;padding:18px;max-width:440px;width:100%;max-height:90vh;overflow:auto}
-  .card h3{margin:0 0 8px}
-  .card input{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px;margin:6px 0 10px}
+  .modal.bottom{align-items:flex-end;padding:0}
+  .modal.bottom .card{max-width:560px;border-radius:18px 18px 0 0;padding-bottom:calc(env(safe-area-inset-bottom) + 18px);max-height:88vh}
+  .card{background:var(--panel);color:var(--ink);border-radius:18px;padding:18px;max-width:460px;width:100%;max-height:90vh;overflow:auto}
+  .card h3{margin:0 0 10px;font-size:19px}
+  .card h4{margin:14px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .card input{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;font-size:15px;margin:6px 0 10px;background:var(--panel);color:var(--ink)}
   .card p{font-size:14px;line-height:1.45;margin:6px 0}
+  .card label{display:block;font-size:13px;color:var(--muted);margin-top:4px}
+  .card label input,.card label select{margin:4px 0 6px;width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px;background:var(--panel);color:var(--ink)}
+  .card label.chk{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--ink);padding:8px 0}
+  .card label.chk input{width:20px;height:20px;margin:0;flex:none;accent-color:var(--accent)}
   .legend{font-size:13px;line-height:1.8}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+  .calc{background:var(--soft2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:14px;line-height:1.6;margin-top:8px}
+  .verdict{font-weight:700}.v-good{color:var(--ok-ink)}.v-mid{color:var(--mid-ink)}.v-bad{color:var(--bad-ink)}
+  [data-theme="light"] .v-good,:root:not([data-theme="dark"]) .v-good{color:#166534}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
+  .stat{background:var(--soft2);border:1px solid var(--line);border-radius:12px;padding:8px;text-align:center}
+  .stat b{display:block;font-size:15px}.stat span{font-size:11px;color:var(--muted)}
+  .seg{display:flex;background:var(--soft);border-radius:12px;padding:3px;margin:8px 0 4px}
+  .seg button{flex:1;border:0;background:none;padding:9px 6px;border-radius:9px;font-size:14px;cursor:pointer;color:var(--muted)}
+  .seg button.on{background:var(--panel);color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+  .seg button span{color:inherit;opacity:.8}
+  .tog{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 6px}
+  .tog button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:9px 14px;font-size:14px;cursor:pointer}
+  .tog button.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+  /* mapa */
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
   .pin{border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);display:flex;align-items:center;
        justify-content:center;color:#fff;font-size:11px;font-weight:700}
   .pin.off{outline:2px solid var(--off);outline-offset:1px}
   .pin.fav::after{content:"★";position:absolute;top:-9px;right:-7px;color:#facc15;font-size:13px;text-shadow:0 0 2px #000}
+  .pin.new::before{content:"";position:absolute;bottom:-4px;left:-4px;width:10px;height:10px;border-radius:50%;background:#22d3ee;border:2px solid #fff}
   .leaflet-div-icon{background:none;border:0}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
-  .card label{display:block;font-size:13px;color:var(--muted);margin-top:4px}
-  .card label input,.card label select{margin:4px 0 6px;width:100%;padding:9px;border:1px solid var(--line);border-radius:10px;font-size:15px;background:#fff;color:var(--ink)}
-  .calc{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:14px;line-height:1.6;margin-top:8px}
-  .verdict{font-weight:700}.v-good{color:#166534}.v-mid{color:#a16207}.v-bad{color:#991b1b}
-  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
-  .stat{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
-  .stat b{display:block;font-size:15px}.stat span{font-size:11px;color:var(--muted)}
-  .where{position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom) + 96px);z-index:950;border:0;border-radius:999px;
-         background:#2563eb;color:#fff;font-size:15px;font-weight:700;padding:12px 16px;box-shadow:0 3px 12px rgba(0,0,0,.3);
-         cursor:pointer;display:flex;align-items:center;gap:6px}
-  .where.busy .wicon{animation:spin 1s linear infinite;display:inline-block}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .here{position:fixed;left:10px;right:10px;top:calc(env(safe-area-inset-top) + 112px);z-index:940;background:#fff;border-radius:12px;
-        box-shadow:0 2px 10px rgba(0,0,0,.18);padding:9px 12px;font-size:14px;display:none}
-  .here.on{display:block}
-  @media(min-width:760px){.here{left:auto;width:380px}}
+  .clu{border-radius:50%;background:rgba(15,23,42,.88);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;
+       box-shadow:0 0 0 4px rgba(37,99,235,.35),0 2px 6px rgba(0,0,0,.4)}
+  .clu.hasfast{box-shadow:0 0 0 4px rgba(234,88,12,.55),0 2px 6px rgba(0,0,0,.4)}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.25),0 1px 4px rgba(0,0,0,.4)}
+  /* listas e diversos */
   .adv{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
   .adv summary{cursor:pointer;font-size:14px;color:var(--muted)}
-  .me-dot{width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.25),0 1px 4px rgba(0,0,0,.4)}
-  .carrow{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:6px 0}
-  .carrow.act{border-color:#16a34a;background:#f0fdf4}
-  .btn.sm{min-width:0;flex:none;padding:6px 10px;font-size:13px}
+  .carrow{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:9px 10px;margin:6px 0}
+  .carrow.act{border-color:#16a34a;background:var(--ok-bg)}
   .tl{border-left:3px solid #1d4ed8;margin:10px 0 6px 8px;padding-left:12px}
   .tli{position:relative;padding:6px 0 10px;font-size:14px;line-height:1.5}
-  .tli::before{content:"";position:absolute;left:-19px;top:10px;width:11px;height:11px;border-radius:50%;background:#1d4ed8;border:2px solid #fff}
+  .tli::before{content:"";position:absolute;left:-19px;top:10px;width:11px;height:11px;border-radius:50%;background:#1d4ed8;border:2px solid var(--panel)}
   .tli.stop::before{background:#ea580c}
   a.mini{color:var(--accent);font-size:13px;cursor:pointer;text-decoration:underline}
-  .btn:disabled{opacity:.5}
-  .where.list{right:auto;left:12px;background:#fff;color:var(--ink)}
-  .chpill{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 112px);z-index:945;border:0;border-radius:999px;
-          background:#16a34a;color:#fff;font-weight:700;padding:8px 14px;box-shadow:0 2px 10px rgba(0,0,0,.3);cursor:pointer;font-size:14px}
-  select.chip{appearance:none;-webkit-appearance:none;font:inherit;font-size:14px;color:var(--ink);padding-right:12px}
-  select.chip.on{background:var(--ink);color:#fff}
   .list{margin-top:8px}
-  .li{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px}
+  .li{display:flex;align-items:center;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line);cursor:pointer;font-size:14px}
+  .qcard{border:1px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}
+  .qcard h5{margin:0 0 2px;font-size:16px}
   .rep{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0 2px;font-size:14px}
   .rep span{flex:1}
-  .near{margin:10px 0;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .near{margin:10px 0;border:1px solid var(--line);border-radius:12px;padding:8px 10px}
   .near summary{cursor:pointer;font-size:14px}
   .poi{font-size:13px;padding:2px 0 2px 8px}
-  .bar{height:12px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+  .bar{height:12px;background:var(--soft);border-radius:999px;overflow:hidden}
   .bar div{height:100%;width:0;background:#2563eb;transition:width .5s}
-  .b-mid{background:#fef9c3;color:#854d0e}.b-new{background:#dbeafe;color:#1e40af}
   .photos{display:flex;gap:6px;overflow-x:auto;margin:4px 0 10px}
-  .photos img{height:84px;width:112px;object-fit:cover;border-radius:8px;display:block;background:#f1f5f9}
-  .pin.new::before{content:"";position:absolute;bottom:-4px;left:-4px;width:10px;height:10px;border-radius:50%;background:#22d3ee;border:2px solid #fff}
+  .photos img{height:84px;width:112px;object-fit:cover;border-radius:8px;display:block;background:var(--soft)}
   .saved{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 6px}
-  .chip.sv{box-shadow:none;font-size:13px;padding:5px 10px}
+  .chip{flex:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:7px 12px;font-size:14px;cursor:pointer;white-space:nowrap}
+  .chip.sv{font-size:13px;padding:6px 10px}
   .chip.sv b{margin-left:8px;color:var(--muted);font-weight:400}
-  .seg button span{color:inherit;opacity:.8}
-  .seg{display:flex;background:#f1f5f9;border-radius:10px;padding:3px;margin:10px 0 4px}
-  .seg button{flex:1;border:0;background:none;padding:7px;border-radius:8px;font-size:14px;cursor:pointer;color:var(--muted)}
-  .seg button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
-  .entry{border-bottom:1px solid var(--line);padding:8px 0;font-size:14px}
+  .entry{border-bottom:1px solid var(--line);padding:9px 0;font-size:14px}
   .entry .del{float:right;border:0;background:none;color:var(--muted);cursor:pointer;font-size:13px}
+  .steps{display:flex;gap:6px;justify-content:center;margin:2px 0 12px}
+  .steps i{width:28px;height:4px;border-radius:4px;background:var(--line)}
+  .steps i.on{background:var(--accent)}
+  .ver{font-size:12px;color:var(--muted);text-align:center;margin-top:10px}
 </style>
 </head>
 <body>
@@ -135,33 +205,29 @@
 
 <div class="top">
   <div class="row">
-    <form class="search" id="searchForm">
-      <input id="q" type="search" placeholder="Buscar cidade, endereço…" autocomplete="off">
-      <button type="submit" aria-label="Buscar">🔍</button>
+    <form class="search" id="searchForm" autocomplete="off">
+      <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Buscar cidade, endereço…" autocomplete="off" enterkeyhint="search">
+      <div class="ac" id="qAc"></div>
     </form>
-    <button class="ibtn" id="tripBtn" title="Planejar viagem">🧭</button>
-    <button class="ibtn" id="histBtn" title="Minhas recargas">📒</button>
-    <button class="ibtn" id="cfgBtn" title="Configurações">⚙️</button>
-  </div>
-  <div class="chips" id="chips">
-    <button class="chip on" data-f="fast"><span class="dot" style="background:var(--fast)"></span>Rápido (DC)</button>
-    <button class="chip on" data-f="slow"><span class="dot" style="background:var(--slow)"></span>Lento (AC)</button>
-    <button class="chip" data-f="opOnly">Só operacionais</button>
-    <button class="chip" data-f="favOnly">★ Favoritos</button>
-    <button class="chip" data-f="ccs">CCS2</button>
-    <button class="chip" data-f="type2">Tipo 2</button>
-    <button class="chip" data-f="openNow">Aberto agora</button>
-    <button class="chip" data-f="multi">2+ vagas</button>
-    <button class="chip" data-f="newOnly">🆕 Novos</button>
-    <select class="chip" id="netSel"><option value="">Rede: todas</option></select>
+    <button class="fbtn" id="filtBtn" aria-label="Filtros"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Filtros</span><span class="cnt" id="filtCnt" style="display:none">0</span></button>
   </div>
 </div>
 
-<button class="where list" id="listBtn">☰ Lista</button>
-<button class="chpill" id="chPill" style="display:none">🔋</button>
-<button class="where" id="locBtn" title="Mostrar onde estou"><span class="wicon">◎</span> Onde estou</button>
+<div class="status hide" id="status"></div>
 <div class="here" id="here"></div>
-<div class="status" id="status">Carregando mapa…</div>
+<button class="chpill" id="chPill" style="display:none">🔋</button>
+<button class="fab" id="listBtn" aria-label="Lista de postos por distância"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
+<button class="fab" id="locBtn" aria-label="Mostrar onde estou"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg></button>
+<button class="cta" id="nowBtn"><svg class="i" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>Carregar agora</button>
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none">Desfazer</button></div>
+
+<nav class="nav" id="nav">
+  <button class="on" data-tab="map"><svg class="i" viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>Mapa</button>
+  <button id="tripBtn" data-tab="trip"><svg class="i" viewBox="0 0 24 24"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h8a3.5 3.5 0 0 0 0-7H8a3.5 3.5 0 0 1 0-7h8"/></svg>Rotas</button>
+  <button id="histBtn" data-tab="hist"><svg class="i" viewBox="0 0 24 24"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>Recargas</button>
+  <button id="cfgBtn" data-tab="cfg"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Ajustes</button>
+</nav>
 
 <div class="sheet" id="sheet">
   <div class="grab"></div>
@@ -169,13 +235,47 @@
   <div id="sheetBody"></div>
 </div>
 
+<div class="modal bottom" id="filtModal">
+  <div class="card">
+    <h3>Filtros</h3>
+    <h4>Velocidade</h4>
+    <div class="seg" id="fSpeed"><button data-v="all">Todos</button><button data-v="fast">⚡ Só rápidos</button><button data-v="slow">Só lentos</button></div>
+    <h4>Conector</h4>
+    <div class="tog"><button data-f="ccs">CCS2</button><button data-f="type2">Tipo 2</button></div>
+    <h4>Disponibilidade</h4>
+    <div class="tog"><button data-f="opOnly">✓ Só operacionais</button><button data-f="openNow">Aberto agora</button><button data-f="multi">2+ vagas</button></div>
+    <h4>Outros</h4>
+    <div class="tog"><button data-f="favOnly">★ Favoritos</button><button data-f="newOnly">🆕 Novos (30 dias)</button></div>
+    <h4>Rede</h4>
+    <label><select id="netSel"><option value="">Todas as redes</option></select></label>
+    <details class="adv"><summary>Legenda do mapa</summary>
+      <div class="legend">
+        <span class="dot" style="background:var(--fast)"></span>Rápido: corrente contínua (DC) ou acima de 22 kW<br>
+        <span class="dot" style="background:var(--slow)"></span>Lento: corrente alternada (AC) até 22 kW<br>
+        <span class="dot" style="background:var(--unk)"></span>Potência não informada<br>
+        <span class="dot" style="border:2px solid var(--off)"></span>Contorno vermelho: fora de operação ou marcado como quebrado<br>
+        <span class="dot" style="background:#22d3ee"></span>Ponto azul-claro: posto novo · ★ favorito<br>
+        Círculo escuro com número: vários postos juntos – aproxime para ver. Número no marcador = potência máxima (kW).
+      </div></details>
+    <div class="actions"><button class="btn" id="fClear">Limpar</button><button class="btn primary" id="fDone">Ver postos</button></div>
+  </div>
+</div>
+
+<div class="modal" id="onb">
+  <div class="card">
+    <div class="steps" id="onbSteps"></div>
+    <div id="onbBody"></div>
+    <div class="actions"><button class="btn" id="onbSkip">Pular</button><button class="btn primary" id="onbNext">Continuar</button></div>
+  </div>
+</div>
+
 <div class="modal" id="cfg">
   <div class="card">
-    <h3>Configurações</h3>
-    <p><b>Carros</b> <span class="muted">(o destacado em verde é o que está em uso)</span></p>
+    <h3>Ajustes</h3>
+    <h4>Carros</h4><p class="muted" style="font-size:13px;margin-top:0">O destacado em verde é o que está em uso.</p>
     <div id="carList"></div>
     <button class="btn" id="carAdd" style="width:100%;margin:6px 0 10px">+ Adicionar carro</button>
-    <p><b>Referências para o "vale a pena?" e para as rotas</b></p>
+    <h4>Preços e referências</h4>
     <div class="grid2">
       <label>Energia em casa (R$/kWh)<input id="refHome" type="number" step="0.01" inputmode="decimal"></label>
       <label>Preço médio em postos (R$/kWh)<input id="refPub" type="number" step="0.01" inputmode="decimal"></label>
@@ -183,27 +283,21 @@
       <label>Carro a combustão (km/litro)<input id="refKml" type="number" step="0.1" inputmode="decimal"></label>
       <label>Margem de segurança nas rotas (%)<input id="refMargin" type="number" step="1" inputmode="numeric"></label>
     </div>
-    <div class="legend">
-      <b>Legenda</b><br>
-      <span class="dot" style="background:var(--fast)"></span>Rápido: corrente contínua (DC) ou acima de 22 kW<br>
-      <span class="dot" style="background:var(--slow)"></span>Lento: corrente alternada (AC) até 22 kW<br>
-      <span class="dot" style="background:var(--unk)"></span>Potência não informada<br>
-      <span class="dot" style="border:2px solid var(--off)"></span>Contorno vermelho: fora de operação<br>
-      O número no marcador é a potência máxima (kW).
-    </div>
-    <p class="muted">Status "disponível agora" (vaga livre/ocupada) não é publicado de forma aberta pelas redes no Brasil.
-      O app mostra o status operacional informado pela comunidade e a data da última verificação.</p>
+    <h4>Aparência</h4>
+    <div class="seg" id="themeSeg"><button data-t="auto">Automático</button><button data-t="light">Claro</button><button data-t="dark">Escuro</button></div>
+    <p class="muted" style="font-size:13px">Disponibilidade "vaga livre/ocupada" em tempo real não é publicada de forma aberta pelas redes no Brasil. O app mostra o status informado pela comunidade, a nota de confiabilidade e a data da última verificação.</p>
     <details id="keyDetails" class="adv">
       <summary>Avançado · chave do Open Charge Map <span id="keyState"></span></summary>
       <p>Chave gratuita, salva só neste aparelho. Sem ela o app mostra apenas os postos do OpenStreetMap.
         Gere em <a href="https://openchargemap.org/site/profile/applications" target="_blank" rel="noopener">openchargemap.org → My Apps</a>.</p>
       <input id="keyInput" type="password" placeholder="cole aqui sua API key" autocomplete="off">
-      <label style="font-size:13px"><input type="checkbox" id="keyShow" style="width:auto;margin:0 6px 0 0">mostrar chave</label>
+      <label class="chk" style="font-size:13px"><input type="checkbox" id="keyShow">mostrar chave</label>
     </details>
     <div class="actions">
       <button class="btn" id="cfgCancel">Fechar</button>
       <button class="btn primary" id="cfgSave">Salvar</button>
     </div>
+    <div class="ver">Recarga EV · versão <span id="verTxt"></span> · <a id="updBtn" style="cursor:pointer;text-decoration:underline">buscar atualização</a> · <a id="onbAgain" style="cursor:pointer;text-decoration:underline">rever o guia inicial</a></div>
   </div>
 </div>
 
@@ -278,7 +372,7 @@
         <label>Potência real (kW)<input id="chKw" type="number" step="0.1" inputmode="decimal"></label>
         <label>Preço (R$/kWh)<input id="chPrice" type="number" step="0.01" inputmode="decimal"></label>
       </div>
-      <label style="font-size:14px;color:var(--ink)"><input type="checkbox" id="chDc" style="width:auto;margin:0 6px 0 0">Carregador rápido (DC)</label>
+      <label class="chk"><input type="checkbox" id="chDc">Carregador rápido (DC)</label>
       <p class="muted" style="font-size:13px">Use a potência que o carregador ou o app do operador mostrar. O aviso toca com o app aberto (pode ficar com a tela apagada, mas sem fechar o navegador).</p>
       <div class="actions"><button class="btn" id="chCancel">Cancelar</button><button class="btn primary" id="chStart">Iniciar</button></div>
     </div>
@@ -296,27 +390,31 @@
   <div class="card">
     <h3>Planejar viagem</h3>
     <div id="trSaved"></div>
-    <label>Carro<select id="trCar"></select></label>
-    <label>Saída<input id="trFrom" placeholder="Minha localização atual" autocomplete="off"></label>
+    <div class="acwrap"><label>De<input id="trFrom" placeholder="Minha localização atual" autocomplete="off"></label><div class="ac"></div></div>
     <div id="trVias"></div>
-    <button class="btn" id="trAddVia" style="width:100%;margin:2px 0 6px">+ Adicionar parada no caminho</button>
-    <label>Destino<input id="trTo" placeholder="ex.: Feira de Santana, BA" autocomplete="off"></label>
+    <div class="acwrap"><label>Para<input id="trTo" placeholder="Cidade, endereço ou lugar" autocomplete="off"></label><div class="ac"></div></div>
     <div class="grid2">
-      <label>Bateria na saída (%)<input id="trSoc" type="number" min="1" max="100" inputmode="numeric"></label>
-      <label>Carregar no máximo até (%)<input id="trMax" type="number" min="50" max="100" inputmode="numeric"></label>
-      <label>Chegar nos carregadores com (%)<input id="trResCh" type="number" min="0" max="50" inputmode="numeric"></label>
-      <label>Chegar no destino com (%)<input id="trRes" type="number" min="0" max="80" inputmode="numeric"></label>
-      <label>Só rápidos acima de (kW)<input id="trMinKw" type="number" min="0" step="5" inputmode="numeric"></label>
+      <label>Bateria agora (%)<input id="trSoc" type="number" min="1" max="100" inputmode="numeric"></label>
+      <label>Carro<select id="trCar"></select></label>
+    </div>
+    <button class="btn sm" id="trAddVia" style="margin:2px 0 4px">+ Parada no caminho</button>
+    <details class="more" id="trMore"><summary>Mais opções</summary>
+      <div class="grid2">
+        <label>Carregar no máximo até (%)<input id="trMax" type="number" min="50" max="100" inputmode="numeric"></label>
+        <label>Chegar nos carregadores com (%)<input id="trResCh" type="number" min="0" max="50" inputmode="numeric"></label>
+        <label>Chegar no destino com (%)<input id="trRes" type="number" min="0" max="80" inputmode="numeric"></label>
+        <label>Só rápidos acima de (kW)<input id="trMinKw" type="number" min="0" step="5" inputmode="numeric"></label>
+      </div>
       <label>Como você dirige
         <select id="trSpeed"><option value="0.93">Abaixo do limite</option><option value="1">No limite</option><option value="1.12">Um pouco acima</option><option value="1.25">Bem acima</option></select></label>
-    </div>
-    <label style="font-size:14px;color:var(--ink)"><input type="checkbox" id="trSlow" style="width:auto;margin:0 6px 0 0">Usar carregadores lentos se não houver rápido</label>
-    <label style="font-size:14px;color:var(--ink)"><input type="checkbox" id="trEnv" style="width:auto;margin:0 6px 0 0">Considerar relevo e clima (subidas, vento, chuva, calor)</label>
-    <label style="font-size:14px;color:var(--ink)"><input type="checkbox" id="trAlt" style="width:auto;margin:0 6px 0 0">Comparar rotas alternativas (só sem paradas no caminho)</label>
+      <label class="chk"><input type="checkbox" id="trSlow">Usar carregadores lentos se não houver rápido</label>
+      <label class="chk"><input type="checkbox" id="trEnv">Considerar relevo e clima</label>
+      <label class="chk"><input type="checkbox" id="trAlt">Comparar rotas alternativas</label>
+    </details>
     <div id="trMsg" class="muted" style="margin-top:6px"></div>
     <div class="actions">
       <button class="btn" id="trCancel">Fechar</button>
-      <button class="btn primary" id="trGo">Calcular rota</button>
+      <button class="btn primary big" id="trGo">Calcular rota</button>
     </div>
   </div>
 </div>
@@ -344,16 +442,51 @@
   // ---------- mapa ----------
   const last = store.get('view', {lat:-12.9714, lon:-38.5014, z:12}); // Salvador como ponto de partida
   const map = L.map('map', {zoomControl:false}).setView([last.lat, last.lon], last.z);
-  L.control.zoom({position:'bottomright'}).addTo(map);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '© OpenStreetMap · dados: Open Charge Map, OSM'
-  }).addTo(map);
-  const layer = L.layerGroup().addTo(map);
+  const touch = matchMedia('(pointer:coarse)').matches;
+  if (!touch) L.control.zoom({position:'topright'}).addTo(map);   // no celular usa o gesto de pinça
+  // ---------- tema claro/escuro ----------
+  let themePref = store.get('theme', 'auto');
+  const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+  let baseTiles = null;
+  function applyTheme(){
+    const dark = themePref === 'dark' || (themePref === 'auto' && darkMQ.matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    document.querySelector('meta[name=theme-color]').content = dark ? '#0f172a' : '#ffffff';
+    if (baseTiles) map.removeLayer(baseTiles);
+    baseTiles = dark
+      ? L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {maxZoom:19, subdomains:'abcd', attribution:'© OpenStreetMap © CARTO · dados: Open Charge Map, OSM'})
+      : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'© OpenStreetMap · dados: Open Charge Map, OSM'});
+    baseTiles.addTo(map);
+  }
+  try{ darkMQ.addEventListener('change', applyTheme); }catch(e){}
+  applyTheme();
+  // agrupa marcadores próximos quando o mapa está afastado
+  const layer = (L.markerClusterGroup ? L.markerClusterGroup({
+    maxClusterRadius: 48, disableClusteringAtZoom: 15, showCoverageOnHover: false, spiderfyOnMaxZoom: true, chunkedLoading: true,
+    iconCreateFunction: c => {
+      const n = c.getChildCount(), fast = c.getAllChildMarkers().some(m => m.options.fast), sz = n < 10 ? 34 : n < 50 ? 40 : 46;
+      return L.divIcon({html:`<div class="clu ${fast?'hasfast':''}" style="width:${sz}px;height:${sz}px">${n}</div>`, className:'', iconSize:[sz,sz]});
+    }
+  }) : L.layerGroup()).addTo(map);
   let meMarker = null;
 
   const $ = id => document.getElementById(id);
   const statusEl = $('status');
-  const setStatus = t => { statusEl.textContent = t; statusEl.style.display = t ? '' : 'none'; };
+  let statusT = null;
+  const setStatus = t => {
+    statusEl.textContent = t || ''; statusEl.classList.toggle('hide', !t);
+    clearTimeout(statusT);
+    if (t && !/…$/.test(t)) statusT = setTimeout(() => statusEl.classList.add('hide'), /⚠/.test(t) ? 9000 : 4000);
+  };
+  // aviso curto com "Desfazer" opcional
+  let toastT = null;
+  function toast(msg, undo){
+    $('toastMsg').textContent = msg;
+    $('toastBtn').style.display = undo ? '' : 'none';
+    $('toastBtn').onclick = () => { $('toast').classList.remove('on'); undo && undo(); };
+    $('toast').classList.add('on');
+    clearTimeout(toastT); toastT = setTimeout(() => $('toast').classList.remove('on'), undo ? 6000 : 2800);
+  }
 
   // ---------- normalização ----------
   // Estrutura comum: {id, src, name, operator, address, lat, lon, maxKw, isDC, conns:[{type,kw,dc,qty,status}], op, statusText, verified, lastUpdate, cost, access, hours, url, comments}
@@ -609,7 +742,7 @@
 
   function render(){
     layer.clearLayers();
-    const b = map.getBounds().pad(0.2);
+    const b = map.getBounds().pad(0.3), batch = [];
     for (const s of cache.values()){
       if (s.lat == null || !b.contains([s.lat, s.lon])) continue;
       const sp = speedOf(s);
@@ -618,9 +751,11 @@
       const size = sp.cls==='fast' ? 30 : 24;
       const label = sp.max ? Math.round(sp.max) : (sp.cls==='fast' ? '⚡' : '');
       const html = `<div class="pin ${s.op===false||recentlyBroken(s.id)?'off':''} ${favs[s.id]?'fav':''} ${isNew(s)?'new':''}" style="position:relative;width:${size}px;height:${size}px;background:${color};opacity:${s.op===false?.55:1}">${label}</div>`;
-      L.marker([s.lat, s.lon], {icon: L.divIcon({html, iconSize:[size,size], iconAnchor:[size/2,size/2], className:''})})
-        .on('click', () => openSheet(s)).addTo(layer);
+      batch.push(L.marker([s.lat, s.lon], {fast: sp.cls === 'fast', icon: L.divIcon({html, iconSize:[size,size], iconAnchor:[size/2,size/2], className:''})})
+        .on('click', () => openSheet(s)));
     }
+    if (layer.addLayers) layer.addLayers(batch); else batch.forEach(m => m.addTo(layer));
+    updFiltCount();
   }
 
   // ---------- painel de detalhes ----------
@@ -632,58 +767,71 @@
     return m < 1000 ? Math.round(m)+' m de você' : (m/1000).toFixed(1).replace('.', ',')+' km de você';
   }
   function openSheet(s){
-    const sp = speedOf(s);
-    const speedBadge = sp.cls==='fast' ? '<span class="badge b-fast">⚡ Rápido</span>'
-      : sp.cls==='slow' ? '<span class="badge b-slow">Lento</span>' : '<span class="badge b-unk">Velocidade ?</span>';
-    const opBadge = s.op===true ? `<span class="badge b-ok">● ${esc(s.statusText)}</span>`
-      : s.op===false ? `<span class="badge b-off">● ${esc(s.statusText)}</span>` : `<span class="badge b-unk">● ${esc(s.statusText)}</span>`;
+    const sp = speedOf(s), rel = reliability(s), open = isOpenNow(s.hours), rep0 = lastReport(s.id);
+    const statusBadge = s.op===true ? `<span class="badge b-ok">✓ ${esc(s.statusText)}</span>`
+      : s.op===false ? `<span class="badge b-off">✕ ${esc(s.statusText)}</span>` : `<span class="badge b-unk">${esc(s.statusText)}</span>`;
     const rows = s.conns.length ? s.conns.map(c => `<tr><td>${esc(c.type)}</td><td>${c.dc?'DC':'AC'}</td><td>${c.kw?esc(c.kw)+' kW':'–'}</td><td>${c.qty||1}</td></tr>`).join('')
       : '<tr><td colspan="4" class="muted">Conectores não informados</td></tr>';
     const fav = !!favs[s.id];
     const gm = `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}`;
     const wz = `https://waze.com/ul?ll=${s.lat},${s.lon}&navigate=yes`;
     const comments = (s.comments||[]).filter(c=>c.text).map(c => `<p style="font-size:13px;margin:6px 0"><b>${fmtDate(c.date)}</b>${c.user?' · '+esc(c.user):''}: ${esc(c.text)}</p>`).join('');
+    const sub = [s.operator, distTxt(s)].filter(Boolean).join(' · ');
     $('sheetBody').innerHTML = `
-      <h2>${esc(s.name)}</h2>
-      <div class="muted">${esc([s.operator, s.address].filter(Boolean).join(' · '))}</div>
-      <div class="muted">${distTxt(s)}</div>
-      <div class="badges">${speedBadge}${opBadge}${sp.max?`<span class="badge">até ${Math.round(sp.max)} kW</span>`:''}${s.verified?'<span class="badge b-ok">verificado recentemente</span>':''}${relBadge(s)}${s.points?`<span class="badge">${s.points} vaga${s.points>1?'s':''}</span>`:''}${isNew(s)?'<span class="badge b-new">🆕 novo</span>':''}</div>
-      ${(s.photos||[]).length?`<div class="photos">${s.photos.map(ph => `<a href="${esc(ph.url)}" target="_blank" rel="noopener"><img src="${esc(ph.thumb)}" alt="foto do posto" loading="lazy"></a>`).join('')}</div>`:''}
-      <table><tr><th>Conector</th><th>Tipo</th><th>Potência</th><th>Qtd</th></tr>${rows}</table>
-      ${s.access?`<div class="muted">Acesso: ${esc(s.access)}</div>`:''}
-      ${s.cost?`<div class="muted">Custo: ${esc(s.cost)}</div>`:''}
-      ${s.hours?`<div class="muted">Horário/observações: ${esc(s.hours)}</div>`:''}
-      ${s.lastUpdate?`<div class="muted">Última atualização do status: ${fmtDate(s.lastUpdate)}</div>`:''}
+      <h2>${esc(s.name)}${fav?' <span style="color:#eab308">★</span>':''}</h2>
+      <div class="muted">${esc(sub)}</div>
+      <div class="badges">
+        ${sp.cls==='fast'?`<span class="badge b-fast">⚡ ${sp.max?Math.round(sp.max)+' kW':'Rápido'}</span>`:sp.cls==='slow'?`<span class="badge b-slow">${sp.max?Math.round(sp.max)+' kW':'Lento'}</span>`:'<span class="badge b-unk">kW ?</span>'}
+        ${relBadge(s)}${statusBadge}
+        ${open===true?'<span class="badge b-ok">aberto agora</span>':open===false?'<span class="badge b-off">fechado agora</span>':''}
+        ${s.points?`<span class="badge">${s.points} vaga${s.points>1?'s':''}</span>`:''}${isNew(s)?'<span class="badge b-new">🆕 novo</span>':''}
+      </div>
+      ${rep0?`<div class="muted" style="font-size:13px;margin-top:-4px">Seu último relato: ${rep0.ok?'👍 funcionou':'👎 quebrado'} em ${fmtDate(rep0.d)}</div>`:''}
+      <a class="btn primary big" style="width:100%;margin-top:10px" href="${gm}" target="_blank" rel="noopener">
+        <svg class="i" viewBox="0 0 24 24"><path d="M3 11 21 3l-8 18-2-8z"/></svg>Ir até aqui</a>
       <div class="actions">
-        <a class="btn primary" href="${gm}" target="_blank" rel="noopener">Google Maps</a>
-        <a class="btn primary" href="${wz}" target="_blank" rel="noopener">Waze</a>
-        <button class="btn" id="favBtn">${fav?'★ Favorito':'☆ Favoritar'}</button>
+        <a class="btn" href="${wz}" target="_blank" rel="noopener">Waze</a>
+        <button class="btn" id="chBtn">⏱ Iniciar recarga</button>
+        <button class="btn" id="favBtn" aria-label="Favoritar">${fav?'★':'☆'}</button>
       </div>
-      <div class="actions" style="margin-top:0">
-        <button class="btn primary" id="chBtn" style="background:#2563eb">⏱ Iniciar recarga</button>
-        <button class="btn primary" id="logBtn" style="background:#16a34a;border-color:#16a34a">🔌 Registrar recarga</button>
-      </div>
-      <div class="rep"><span>Funcionou para você?</span>
-        <button class="btn sm" id="repOk">👍 Funcionou</button><button class="btn sm" id="repBad">👎 Quebrado</button></div>
-      ${lastReport(s.id)?`<div class="muted" style="font-size:13px">Seu último relato: ${lastReport(s.id).ok?'👍 funcionou':'👎 quebrado'} em ${fmtDate(lastReport(s.id).d)}${recentlyBroken(s.id)?' – o planejador vai evitar este posto por 30 dias':''}</div>`:''}
-      <details class="near" id="nearBox"><summary><b>O que tem por perto</b> <span class="muted">(até 400 m)</span></summary><div id="nearList"></div></details>
-      ${stationSummary(s.id)}
-      ${comments?`<div><b style="font-size:14px">Relatos recentes de usuários</b>${comments}</div>`:''}
-      <div style="margin-top:8px"><b style="font-size:14px">Minhas anotações</b>
-        <textarea id="noteBox" placeholder="Ex.: 15/11 – funcionou, 1 vaga livre, precisa do app X">${esc(notes[s.id]||'')}</textarea></div>
-      <div class="src">Fonte: <a href="${s.url}" target="_blank" rel="noopener">${s.src}</a>${s.osmUrl?` + <a href="${s.osmUrl}" target="_blank" rel="noopener">OpenStreetMap</a>`:''}</div>
-      <div class="src">Ajude outros motoristas: ${s.ocmId?`<a href="https://openchargemap.org/site/poi/details/${s.ocmId}" target="_blank" rel="noopener">fazer check-in / enviar foto no Open Charge Map</a> · `:''}<a href="https://openchargemap.org/site/poi/add" target="_blank" rel="noopener">cadastrar um posto que falta</a></div>`;
+      <details class="more" id="moreBox"><summary>Mais detalhes</summary>
+        ${(s.photos||[]).length?`<div class="photos">${s.photos.map(ph => `<a href="${esc(ph.url)}" target="_blank" rel="noopener"><img src="${esc(ph.thumb)}" alt="foto do posto" loading="lazy"></a>`).join('')}</div>`:''}
+        <table><tr><th>Conector</th><th>Tipo</th><th>Potência</th><th>Qtd</th></tr>${rows}</table>
+        <div class="kv">
+          ${s.address?`<span>Endereço</span><span>${esc(s.address)}</span>`:''}
+          ${s.access?`<span>Acesso</span><span>${esc(s.access)}</span>`:''}
+          ${s.cost?`<span>Custo</span><span>${esc(s.cost)}</span>`:''}
+          ${s.hours?`<span>Horário</span><span>${esc(s.hours)}</span>`:''}
+          ${s.lastUpdate?`<span>Status em</span><span>${fmtDate(s.lastUpdate)}</span>`:''}
+        </div>
+        <button class="btn green" id="logBtn" style="width:100%;margin-top:6px">🔌 Registrar uma recarga aqui</button>
+        <div class="rep"><span>Funcionou para você?</span>
+          <button class="btn sm" id="repOk">👍 Funcionou</button><button class="btn sm" id="repBad">👎 Quebrado</button></div>
+        ${stationSummary(s.id)}
+        <details class="near" id="nearBox"><summary><b>O que tem por perto</b> <span class="muted">(até 400 m)</span></summary><div id="nearList"></div></details>
+        ${comments?`<div><b style="font-size:14px">Relatos recentes de usuários</b>${comments}</div>`:''}
+        <div style="margin-top:8px"><b style="font-size:14px">Minhas anotações</b>
+          <textarea id="noteBox" placeholder="Ex.: funcionou, 1 vaga livre, precisa do app X">${esc(notes[s.id]||'')}</textarea></div>
+        <div class="src">Fonte: <a href="${s.url}" target="_blank" rel="noopener">${s.src}</a>${s.osmUrl?` + <a href="${s.osmUrl}" target="_blank" rel="noopener">OpenStreetMap</a>`:''}</div>
+        <div class="src">Ajude outros motoristas: ${s.ocmId?`<a href="https://openchargemap.org/site/poi/details/${s.ocmId}" target="_blank" rel="noopener">check-in / foto no Open Charge Map</a> · `:''}<a href="https://openchargemap.org/site/poi/add" target="_blank" rel="noopener">cadastrar posto que falta</a></div>
+      </details>`;
     $('favBtn').onclick = () => {
-      if (favs[s.id]) delete favs[s.id]; else favs[s.id] = {name:s.name, lat:s.lat, lon:s.lon};
+      const was = !!favs[s.id];
+      if (was) delete favs[s.id]; else favs[s.id] = {name:s.name, lat:s.lat, lon:s.lon};
       store.set('favs', favs); render(); openSheet(s);
+      toast(was ? 'Removido dos favoritos' : '★ Adicionado aos favoritos');
     };
     $('logBtn').onclick = () => openLog(s);
     $('chBtn').onclick = () => chg ? runCharge() : openCharge(s);
-    if (chg) $('chBtn').textContent = '⏱ Recarga em andamento';
-    $('repOk').onclick = () => { addReport(s.id, true); render(); openSheet(s); };
-    $('repBad').onclick = () => { addReport(s.id, false); render(); openSheet(s); };
+    if (chg) $('chBtn').textContent = '⏱ Em andamento';
+    const report = ok => { addReport(s.id, ok); render(); openSheet(s); $('moreBox').open = true;
+      toast(ok ? '👍 Obrigado! Relato salvo' : '👎 Marcado como quebrado – o planejador vai evitá-lo por 30 dias', () => {
+        reports[s.id].pop(); store.set('reports', reports); render(); openSheet(s); }); };
+    $('repOk').onclick = () => report(true);
+    $('repBad').onclick = () => report(false);
     $('nearBox').ontoggle = () => { if ($('nearBox').open && !$('nearList').dataset.done){ $('nearList').dataset.done = 1; nearby(s, $('nearList')); } };
-    $('noteBox').oninput =e => { const v = e.target.value.trim(); if (v) notes[s.id] = v; else delete notes[s.id]; store.set('notes', notes); };
+    $('noteBox').oninput = e => { const v = e.target.value.trim(); if (v) notes[s.id] = v; else delete notes[s.id]; store.set('notes', notes); };
+    $('sheet').scrollTop = 0;
     $('sheet').classList.add('open');
   }
   $('sheetClose').onclick = () => $('sheet').classList.remove('open');
@@ -758,6 +906,7 @@
     activeCar = e.car; saveCars();
     $('logModal').classList.remove('open');
     openSheet(logTarget);
+    toast('✓ Recarga salva em Recargas');
   };
 
   function stationSummary(id){
@@ -806,12 +955,12 @@
       const h = (H - padT - padB) * b.cost / max, x = padL + i*bw + bw*0.15, y = H - padB - h, w = bw*0.7;
       const last = i === B.length - 1;
       bars += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(h, b.n?2:0)}" rx="3" fill="${last?'#2563eb':'#93c5fd'}"><title>${b.label}: ${brl(b.cost)} · ${num(b.kwh)} kWh · ${b.n} recarga(s)</title></rect>`;
-      if (b.cost > 0) bars += `<text x="${x+w/2}" y="${y-4}" text-anchor="middle" font-size="9" fill="#334155">${Math.round(b.cost)}</text>`;
-      bars += `<text x="${x+w/2}" y="${H-padB+13}" text-anchor="middle" font-size="9" fill="#64748b">${b.label}</text>`;
+      if (b.cost > 0) bars += `<text x="${x+w/2}" y="${y-4}" text-anchor="middle" font-size="9" fill="currentColor">${Math.round(b.cost)}</text>`;
+      bars += `<text x="${x+w/2}" y="${H-padB+13}" text-anchor="middle" font-size="9" fill="currentColor" opacity=".6">${b.label}</text>`;
     });
     return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Gastos ${mode==='week'?'semanais':'mensais'}">
-      <text x="${padL}" y="14" font-size="11" fill="#64748b">Gasto em R$ por ${mode==='week'?'semana (início na segunda)':'mês'} · últimos 12</text>
-      <line x1="${padL}" x2="${W-padL}" y1="${H-padB}" y2="${H-padB}" stroke="#e2e8f0"/>${bars}</svg>
+      <text x="${padL}" y="14" font-size="11" fill="currentColor" opacity=".6">Gasto em R$ por ${mode==='week'?'semana (início na segunda)':'mês'} · últimos 12</text>
+      <line x1="${padL}" x2="${W-padL}" y1="${H-padB}" y2="${H-padB}" stroke="currentColor" stroke-opacity=".2"/>${bars}</svg>
       <div class="muted" style="font-size:13px">No período: <b>${brl(total)}</b> · ${num(totKwh,0)} kWh · média de ${brl(total/withData)} por ${mode==='week'?'semana':'mês'} com recarga</div>`;
   }
 
@@ -846,7 +995,9 @@
     $('histBody').innerHTML = h;
     $('histBody').querySelectorAll('.seg button').forEach(b => b.onclick = () => { chartMode = b.dataset.m; store.set('chart', chartMode); openHist(); });
     $('histBody').querySelectorAll('.del').forEach(b => b.onclick = () => {
-      logs = logs.filter(l => String(l.id) !== b.dataset.id); store.set('logs', logs); openHist();
+      const gone = logs.find(l => String(l.id) === b.dataset.id);
+      logs = logs.filter(l => l !== gone); store.set('logs', logs); openHist();
+      toast('Recarga apagada', () => { logs.push(gone); store.set('logs', logs); openHist(); });
     });
     $('backupBox').value = JSON.stringify({logs, favs, notes, refs, cars});
     $('histModal').classList.add('open');
@@ -879,10 +1030,6 @@
   };
 
   // ---------- filtros ----------
-  document.querySelectorAll('.chip[data-f]').forEach(ch => {
-    const f = ch.dataset.f; ch.classList.toggle('on', !!filters[f]);
-    ch.onclick = () => { filters[f] = !filters[f]; ch.classList.toggle('on', filters[f]); store.set('filters', filters); render(); };
-  });
 
   // ---------- localização ----------
   let accCircle = null, hereTimer = null;
@@ -945,15 +1092,18 @@
     $('keyState').textContent = apiKey ? '✓ configurada' : '⚠ não configurada';
     $('keyDetails').open = !apiKey;
     for (const k in refIds) $(refIds[k]).value = refs[k];
-    renderCars();
+    renderCars(); paintTheme();
     $('cfg').classList.add('open');
   };
   $('cfgCancel').onclick = () => $('cfg').classList.remove('open');
   $('cfgSave').onclick = () => {
     for (const k in refIds){ const v = val(refIds[k]); if (v > 0 || (k==='margin' && v === 0)) refs[k] = v; }
     store.set('refs', refs);
-    apiKey = $('keyInput').value.trim(); store.set('key', apiKey);
-    $('cfg').classList.remove('open'); cache.clear(); areas.ocm = []; areas.osm = []; load();
+    const k = $('keyInput').value.trim();
+    $('cfg').classList.remove('open');
+    if (k !== apiKey){ apiKey = k; store.set('key', apiKey); cache.clear(); areas.ocm = []; areas.osm = []; load(); }
+    else render();
+    toast('Ajustes salvos ✓');
   };
 
   // ---------- horário de funcionamento (formato OpenStreetMap) ----------
@@ -994,11 +1144,11 @@
     for (const s of cache.values()){ const n = netOf(s); if (n) count[n] = (count[n]||0) + 1; }
     const names = Object.keys(count).sort((a, b) => count[b] - count[a] || a.localeCompare(b));
     const sel = $('netSel'), cur = filters.net || '';
-    sel.innerHTML = '<option value="">Rede: todas</option>' + names.map(n => `<option value="${esc(n)}">${esc(n)} (${count[n]})</option>`).join('');
+    sel.innerHTML = '<option value="">Todas as redes</option>' + names.map(n => `<option value="${esc(n)}">${esc(n)} (${count[n]})</option>`).join('');
     if (cur && !names.includes(cur)) sel.insertAdjacentHTML('beforeend', `<option value="${esc(cur)}">${esc(cur)}</option>`);
     sel.value = cur; sel.classList.toggle('on', !!cur);
   }
-  $('netSel').onchange = e => { filters.net = e.target.value; store.set('filters', filters); e.target.classList.toggle('on', !!filters.net); render(); };
+  $('netSel').onchange = e => { filters.net = e.target.value; store.set('filters', filters); render(); paintFilters(); };
 
   // ---------- relatos pessoais "Funcionou / Quebrado" ----------
   let reports = store.get('reports', {});   // id -> [{d: data ISO, ok: bool}]
@@ -1176,6 +1326,205 @@
   $('chPill').onclick = () => chg && runCharge();
   setInterval(() => { if (chg){ const x = chgState(); $('chPill').textContent = '🔋 ' + Math.floor(x.soc) + '% · ' + hm(x.min); } }, 5000);
 
+  // ---------- painel de filtros ----------
+  const FKEYS = ['ccs','type2','opOnly','openNow','multi','favOnly','newOnly'];
+  function activeFilters(){
+    let n = FKEYS.filter(k => filters[k]).length + (filters.net ? 1 : 0);
+    if (!(filters.fast && filters.slow)) n++;
+    return n;
+  }
+  function updFiltCount(){
+    const n = activeFilters();
+    $('filtCnt').textContent = n; $('filtCnt').style.display = n ? '' : 'none';
+  }
+  function visibleCount(){
+    const b = map.getBounds(); let n = 0;
+    for (const s of cache.values()) if (s.lat != null && b.contains([s.lat, s.lon]) && passes(s, speedOf(s))) n++;
+    return n;
+  }
+  function paintFilters(){
+    const sv = filters.fast && filters.slow ? 'all' : filters.fast ? 'fast' : 'slow';
+    $('fSpeed').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === sv));
+    document.querySelectorAll('#filtModal .tog button').forEach(b => b.classList.toggle('on', !!filters[b.dataset.f]));
+    $('netSel').value = filters.net || '';
+    const n = visibleCount();
+    $('fDone').textContent = `Ver ${n} posto${n===1?'':'s'}`;
+  }
+  const saveFilters = () => { store.set('filters', filters); render(); paintFilters(); };
+  $('fSpeed').querySelectorAll('button').forEach(b => b.onclick = () => {
+    filters.fast = b.dataset.v !== 'slow'; filters.slow = b.dataset.v !== 'fast'; saveFilters(); });
+  document.querySelectorAll('#filtModal .tog button').forEach(b => b.onclick = () => { filters[b.dataset.f] = !filters[b.dataset.f]; saveFilters(); });
+  $('fClear').onclick = () => { FKEYS.forEach(k => filters[k] = false); filters.net = ''; filters.fast = filters.slow = true; saveFilters(); };
+  $('fDone').onclick = () => $('filtModal').classList.remove('open');
+  $('filtBtn').onclick = () => { refreshNetworks(); paintFilters(); $('filtModal').classList.add('open'); };
+  $('filtModal').onclick = e => { if (e.target.id === 'filtModal') $('filtModal').classList.remove('open'); };
+
+  // ---------- ⚡ Carregar agora: os rápidos mais próximos que funcionam ----------
+  $('nowBtn').onclick = async () => {
+    let ref = meMarker ? meMarker.getLatLng() : null;
+    if (!ref){
+      setStatus('Obtendo sua localização…');
+      try{ const ll = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(p => res([p.coords.latitude, p.coords.longitude]), rej, {enableHighAccuracy:true, timeout:12000, maximumAge:60000}));
+        ref = L.latLng(ll[0], ll[1]); whereAmI(true); }
+      catch(e){ ref = map.getCenter(); }
+      setStatus('');
+    }
+    const car = carById(activeCar);
+    const list = [...cache.values()].filter(s => s.lat != null && s.op !== false && !recentlyBroken(s.id) && speedOf(s).cls === 'fast')
+      .map(s => {
+        const d = ref.distanceTo([s.lat, s.lon]) / 1000, rel = reliability(s), kw = Math.min(speedOf(s).max || 50, car.dc);
+        const score = d * 1.3 - (rel ? (rel.score - 5) * 0.8 : 0) - (s.op === true ? 1 : 0) - Math.min(kw, 150) / 60 + (isOpenNow(s.hours) === false ? 50 : 0);
+        return {s, d, rel, kw, score};
+      }).filter(x => x.d < 60).sort((a, b) => a.score - b.score).slice(0, 3);
+    if (!list.length){
+      $('sheetBody').innerHTML = `<h2>⚡ Carregar agora</h2><p class="muted">Nenhum carregador rápido carregado perto de você. Afaste o mapa para buscar numa área maior e tente de novo.</p>`;
+      $('sheet').classList.add('open'); return;
+    }
+    const dTxt = d => d < 1 ? Math.round(d*1000)+' m' : num(d)+' km';
+    $('sheetBody').innerHTML = `<h2>⚡ Carregar agora</h2>
+      <div class="muted">Os rápidos mais próximos, priorizando os que funcionam e têm boa nota · ${esc(car.name)}</div>
+      ${list.map(({s, d, rel, kw}, i) => `<div class="qcard">
+        <h5>${i===0?'⭐ ':''}${esc(s.name)}</h5>
+        <div class="muted" style="font-size:13px">${[netOf(s), dTxt(d)+' em linha reta', s.points?s.points+' vagas':''].filter(Boolean).join(' · ')}</div>
+        <div class="badges" style="margin:8px 0">
+          <span class="badge b-fast">⚡ ${speedOf(s).max?Math.round(speedOf(s).max)+' kW':'rápido'}</span>
+          ${rel?`<span class="badge ${rel.score>=7?'b-ok':rel.score>=4?'b-mid':'b-off'}">★ ${num(rel.score)}/10</span>`:''}
+          ${s.op===true?'<span class="badge b-ok">✓ operacional</span>':''}
+          <span class="badge">~${Math.round(chargeMinutes(car, 20, 80, kw, true))} min de 20→80%</span>
+        </div>
+        <div class="actions" style="margin:0">
+          <a class="btn primary" href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}" target="_blank" rel="noopener">Ir até aqui</a>
+          <a class="btn" href="https://waze.com/ul?ll=${s.lat},${s.lon}&navigate=yes" target="_blank" rel="noopener">Waze</a>
+          <button class="btn sm" data-see="${esc(s.id)}">Detalhes</button>
+        </div></div>`).join('')}`;
+    $('sheetBody').querySelectorAll('[data-see]').forEach(b => b.onclick = () => { const s = cache.get(b.dataset.see); map.setView([s.lat, s.lon], 15); openSheet(s); });
+    $('sheet').scrollTop = 0; $('sheet').classList.add('open');
+  };
+
+  // ---------- barra de navegação ----------
+  const MODALS = ['tripModal','histModal','cfg','filtModal','logModal','chModal','carModal','onb'];
+  function syncNav(){
+    const open = id => $(id).classList.contains('open');
+    const tab = open('tripModal') ? 'trip' : open('histModal') ? 'hist' : open('cfg') || open('carModal') ? 'cfg' : 'map';
+    document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  }
+  const navObs = new MutationObserver(syncNav);
+  MODALS.forEach(id => navObs.observe($(id), {attributes:true, attributeFilter:['class']}));
+  document.querySelector('#nav [data-tab=map]').onclick = () => { MODALS.forEach(id => $(id).classList.remove('open')); $('sheet').classList.remove('open'); };
+  // tocar fora de uma janela fecha (exceto formulários com dados)
+  ['tripModal','histModal','cfg'].forEach(id => $(id).addEventListener('click', e => { if (e.target.id === id) $(id).classList.remove('open'); }));
+
+  // ---------- sugestões de endereço ao digitar (Photon / OpenStreetMap, gratuito) ----------
+  const picked = {};   // texto escolhido -> [lat, lon]
+  function attachAC(input, box, onPick){
+    let tm = null, seq = 0, items = [];
+    const hide = () => box.classList.remove('on');
+    input.addEventListener('input', () => {
+      clearTimeout(tm);
+      const q = input.value.trim();
+      if (q.length < 3){ hide(); return; }
+      tm = setTimeout(async () => {
+        const my = ++seq, c = map.getCenter();
+        try{
+          const r = await fetchT(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=7&lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`, {}, 8000);
+          const j = await r.json(); if (my !== seq) return;
+          items = (j.features || []).map(f => {
+            const p = f.properties || {};
+            const main = p.name || [p.street, p.housenumber].filter(Boolean).join(', ') || p.city || '';
+            const sub = [p.name && p.street ? [p.street, p.housenumber].filter(Boolean).join(', ') : '', p.district || p.locality, p.city !== main ? p.city : '', p.state].filter(Boolean).join(' · ');
+            return {main, sub, br: p.countrycode === 'BR', ll: [f.geometry.coordinates[1], f.geometry.coordinates[0]]};
+          }).filter(x => x.main).sort((a, b) => b.br - a.br).slice(0, 6);
+          box.innerHTML = items.map((x, i) => `<div data-i="${i}">${esc(x.main)}<small>${esc(x.sub)}</small></div>`).join('');
+          box.classList.toggle('on', items.length > 0);
+          box.querySelectorAll('div').forEach(d => d.onmousedown = d.ontouchstart = ev => {
+            ev.preventDefault();
+            const x = items[+d.dataset.i], label = x.main + (x.sub ? ', ' + x.sub.split(' · ').slice(-2).join(', ') : '');
+            input.value = label; picked[label] = x.ll; hide();
+            input.dispatchEvent(new Event('change'));
+            onPick && onPick(x.ll, label);
+          });
+        }catch(e){ hide(); }
+      }, 280);
+    });
+    input.addEventListener('blur', () => setTimeout(hide, 150));
+  }
+  attachAC($('q'), $('qAc'), ll => { map.setView(ll, 15); $('q').blur(); });
+  document.querySelectorAll('#tripModal .acwrap').forEach(w => attachAC(w.querySelector('input'), w.querySelector('.ac')));
+
+  // ---------- tema ----------
+  function paintTheme(){ $('themeSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.t === themePref)); }
+  $('themeSeg').querySelectorAll('button').forEach(b => b.onclick = () => { themePref = b.dataset.t; store.set('theme', themePref); applyTheme(); paintTheme(); });
+
+  // ---------- versão e atualização ----------
+  const APP_VERSION = '2026.11.17-c';
+  $('verTxt').textContent = APP_VERSION;
+  $('updBtn').onclick = async () => {
+    $('updBtn').textContent = 'verificando…';
+    try{
+      const r = await fetch(location.pathname + '?v=' + Date.now(), {cache: 'no-store'});
+      const m = (await r.text()).match(/APP_VERSION = '([^']+)'/);
+      if (m && m[1] !== APP_VERSION){ toast('Nova versão ' + m[1] + ' – atualizando…'); setTimeout(() => location.replace(location.pathname + '?atualizado=' + Date.now()), 900); }
+      else toast('Você já está na versão mais recente ✓');
+    }catch(e){ toast('Sem conexão para verificar agora'); }
+    $('updBtn').textContent = 'buscar atualização';
+  };
+
+  // ---------- primeiro uso guiado ----------
+  let onbStep = 0;
+  const ONB = [
+    () => { const c = carById(activeCar); return `<h3>Bem-vindo ao Recarga EV ⚡</h3>
+      <p>Postos de recarga, rotas com paradas e controle de gastos – sem propaganda.</p>
+      <h4>Seu carro</h4>
+      <label>Nome<input id="obName" value="${esc(c.name)}"></label>
+      <div class="grid2">
+        <label>Bateria útil (kWh)<input id="obCap" type="number" step="0.1" inputmode="decimal" value="${c.cap}"></label>
+        <label>Consumo (km/kWh)<input id="obEff" type="number" step="0.1" inputmode="decimal" value="${c.eff}"></label>
+        <label>Recarga rápida máx. (kW)<input id="obDc" type="number" inputmode="numeric" value="${c.dc}"></label>
+        <label>Recarga lenta máx. (kW)<input id="obAc" type="number" step="0.1" inputmode="decimal" value="${c.ac}"></label>
+      </div><p class="muted" style="font-size:13px">Estão no manual ou no site da montadora. Dá para mudar depois em Ajustes, e cadastrar mais carros.</p>`; },
+    () => `<h3>Sua localização</h3>
+      <p>Usada só no seu celular para mostrar onde você está, os postos mais próximos e para traçar rotas. Ninguém mais vê.</p>
+      <button class="btn primary big" id="obLoc" style="width:100%;margin-top:8px">Permitir localização</button>
+      <p class="muted" id="obLocMsg" style="font-size:13px"></p>`,
+    () => `<h3>Mais postos no mapa</h3>
+      <p>Uma chave gratuita do <b>Open Charge Map</b> acrescenta milhares de postos, fotos e avaliações. Sem ela o app mostra só os postos do OpenStreetMap.</p>
+      <p style="font-size:13px">Crie uma conta em <a href="https://openchargemap.org/site/profile/applications" target="_blank" rel="noopener">openchargemap.org → My Apps</a>, toque em <i>Register an Application</i> e copie a <i>API Key</i>.</p>
+      <input id="obKey" type="password" placeholder="cole aqui a API Key (opcional)" autocomplete="off" value="${esc(apiKey)}">`
+  ];
+  function showOnb(i){
+    onbStep = i;
+    $('onbSteps').innerHTML = ONB.map((_, k) => `<i class="${k<=i?'on':''}"></i>`).join('');
+    $('onbBody').innerHTML = ONB[i]();
+    $('onbNext').textContent = i === ONB.length - 1 ? 'Começar' : 'Continuar';
+    $('onbSkip').textContent = i === 0 ? 'Pular guia' : 'Voltar';
+    if (i === 1) $('obLoc').onclick = () => { $('obLocMsg').textContent = 'Aguardando permissão…';
+      navigator.geolocation.getCurrentPosition(() => { $('obLocMsg').textContent = '✓ Localização permitida'; store.set('geoOk', true); },
+        () => { $('obLocMsg').textContent = 'Não permitida – você pode liberar depois nas configurações do navegador.'; }); };
+    $('onb').classList.add('open');
+  }
+  function onbSaveStep(){
+    if (onbStep === 0){
+      const c = carById(activeCar);
+      c.name = ($('obName').value || '').trim() || c.name;
+      for (const [k, id] of [['cap','obCap'],['eff','obEff'],['dc','obDc'],['ac','obAc']]){ const v = val(id); if (v > 0) c[k] = v; }
+      saveCars();
+    }
+    if (onbStep === 2){
+      const k = ($('obKey').value || '').trim();
+      if (k !== apiKey){ apiKey = k; store.set('key', apiKey); cache.clear(); areas.ocm = []; areas.osm = []; }
+    }
+  }
+  $('onbNext').onclick = () => {
+    onbSaveStep();
+    if (onbStep < ONB.length - 1) showOnb(onbStep + 1);
+    else { store.set('onboarded', true); $('onb').classList.remove('open'); load(); if (store.get('geoOk', false)) whereAmI(true); toast('Tudo pronto ✓ Toque em ⚡ Carregar agora quando precisar'); }
+  };
+  $('onbSkip').onclick = () => {
+    if (onbStep > 0){ onbSaveStep(); showOnb(onbStep - 1); return; }
+    store.set('onboarded', true); $('onb').classList.remove('open');
+  };
+  $('onbAgain').onclick = () => { $('cfg').classList.remove('open'); showOnb(0); };
+
   // ---------- carros ----------
   function fillCarSelect(sel, value, withAll){
     sel.innerHTML = (withAll ? '<option value="all">Todos os carros</option>' : '') +
@@ -1209,7 +1558,7 @@
     c.name = $('cfName').value.trim() || c.name;
     for (const [k, id] of [['cap','cfCap'],['eff','cfEff'],['dc','cfDc'],['ac','cfAc'],['mass','cfMass']]){ const v = val(id); if (v > 0) c[k] = v; }
     if (!cars.includes(c)) cars.push(c);
-    saveCars(); renderCars(); $('carModal').classList.remove('open');
+    saveCars(); renderCars(); $('carModal').classList.remove('open'); toast('Carro salvo ✓');
   };
   $('cfDel').onclick = () => {
     if (!$('cfDel').dataset.confirm){ $('cfDel').dataset.confirm = '1'; $('cfDel').textContent = 'Toque de novo p/ excluir'; return; }
@@ -1236,6 +1585,7 @@
     ? navigator.geolocation.getCurrentPosition(p => res([p.coords.latitude, p.coords.longitude]), rej, {enableHighAccuracy:true, timeout:15000, maximumAge:60000})
     : rej(new Error('sem GPS')));
   async function geocode(q){
+    if (q && picked[q]) return {ll: picked[q], name: q.split(',')[0]};
     if (!q || /^minha localiza/i.test(q)){
       try { const ll = await geoPromise(); return {ll, name:'Minha localização'}; }
       catch(e){ throw new Error('Não consegui sua localização. Digite o endereço de saída.'); }
@@ -1445,9 +1795,10 @@
   let lastTrip = null;
   const say = t => { $('trMsg').textContent = t; if (!$('tripModal').classList.contains('open')) setStatus(t); };
   function renderVias(){
-    $('trVias').innerHTML = trip.vias.map((v, i) => `<label>Parada ${i+1}<span style="display:flex;gap:6px">
-      <input data-via="${i}" value="${esc(v)}" placeholder="cidade ou endereço" style="flex:1"><button class="btn sm" data-rm="${i}" style="flex:none;min-width:0">✕</button></span></label>`).join('');
-    $('trVias').querySelectorAll('[data-via]').forEach(inp => inp.oninput = () => trip.vias[+inp.dataset.via] = inp.value);
+    $('trVias').innerHTML = trip.vias.map((v, i) => `<div class="acwrap"><label>Parada ${i+1}<span style="display:flex;gap:6px">
+      <input data-via="${i}" value="${esc(v)}" placeholder="cidade ou endereço" style="flex:1" autocomplete="off"><button class="btn sm" data-rm="${i}" style="flex:none;min-width:0;margin:4px 0 6px">✕</button></span></label><div class="ac"></div></div>`).join('');
+    $('trVias').querySelectorAll('[data-via]').forEach(inp => { inp.oninput = inp.onchange = () => trip.vias[+inp.dataset.via] = inp.value;
+      attachAC(inp, inp.closest('.acwrap').querySelector('.ac')); });
     $('trVias').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { trip.vias.splice(+b.dataset.rm, 1); renderVias(); });
   }
   function renderSaved(){
@@ -1580,7 +1931,7 @@
     $('trSave').onclick = () => {
       const label = `${(tp.from || 'Minha localização').split(',')[0]} → ${tp.to.split(',')[0]}`;
       savedTrips = [{label, trip: tp}, ...savedTrips.filter(x => x.label !== label)].slice(0, 6);
-      store.set('savedTrips', savedTrips); $('trSave').textContent = '★ Salva';
+      store.set('savedTrips', savedTrips); $('trSave').textContent = '★ Salva'; toast('Viagem salva – aparece no topo de Rotas');
     };
     $('trRecalc').onclick = async () => {
       const now = val('trNow');
@@ -1608,7 +1959,7 @@
   load();
   refreshNetworks(); updChgPill();
   if (chg) runCharge();
-  if (!apiKey) setTimeout(() => $('cfgBtn').click(), 800);
+  if (!store.get('onboarded', false) && !apiKey) setTimeout(() => showOnb(0), 600);
   else if (store.get('geoOk', false)) whereAmI(true);   // já permitiu antes: abre centrado em você
 })();
 </script>
