@@ -115,6 +115,14 @@
   .poi{font-size:13px;padding:2px 0 2px 8px}
   .bar{height:12px;background:#e2e8f0;border-radius:999px;overflow:hidden}
   .bar div{height:100%;width:0;background:#2563eb;transition:width .5s}
+  .b-mid{background:#fef9c3;color:#854d0e}.b-new{background:#dbeafe;color:#1e40af}
+  .photos{display:flex;gap:6px;overflow-x:auto;margin:4px 0 10px}
+  .photos img{height:84px;width:112px;object-fit:cover;border-radius:8px;display:block;background:#f1f5f9}
+  .pin.new::before{content:"";position:absolute;bottom:-4px;left:-4px;width:10px;height:10px;border-radius:50%;background:#22d3ee;border:2px solid #fff}
+  .saved{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 6px}
+  .chip.sv{box-shadow:none;font-size:13px;padding:5px 10px}
+  .chip.sv b{margin-left:8px;color:var(--muted);font-weight:400}
+  .seg button span{color:inherit;opacity:.8}
   .seg{display:flex;background:#f1f5f9;border-radius:10px;padding:3px;margin:10px 0 4px}
   .seg button{flex:1;border:0;background:none;padding:7px;border-radius:8px;font-size:14px;cursor:pointer;color:var(--muted)}
   .seg button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
@@ -143,6 +151,8 @@
     <button class="chip" data-f="ccs">CCS2</button>
     <button class="chip" data-f="type2">Tipo 2</button>
     <button class="chip" data-f="openNow">Aberto agora</button>
+    <button class="chip" data-f="multi">2+ vagas</button>
+    <button class="chip" data-f="newOnly">🆕 Novos</button>
     <select class="chip" id="netSel"><option value="">Rede: todas</option></select>
   </div>
 </div>
@@ -245,6 +255,7 @@
       <label>Consumo médio (km/kWh)<input id="cfEff" type="number" step="0.1" inputmode="decimal"></label>
       <label>Recarga rápida máx. DC (kW)<input id="cfDc" type="number" step="1" inputmode="numeric"></label>
       <label>Recarga lenta máx. AC (kW)<input id="cfAc" type="number" step="0.1" inputmode="decimal"></label>
+      <label>Peso com ocupantes (kg)<input id="cfMass" type="number" step="10" inputmode="numeric"></label>
     </div>
     <p class="muted">Esses dados estão no manual ou no site da montadora. O consumo real (km/kWh) aparece no painel do carro – use a média dos últimos dias.</p>
     <div class="actions">
@@ -284,18 +295,24 @@
 <div class="modal" id="tripModal">
   <div class="card">
     <h3>Planejar viagem</h3>
+    <div id="trSaved"></div>
     <label>Carro<select id="trCar"></select></label>
     <label>Saída<input id="trFrom" placeholder="Minha localização atual" autocomplete="off"></label>
     <div id="trVias"></div>
     <button class="btn" id="trAddVia" style="width:100%;margin:2px 0 6px">+ Adicionar parada no caminho</button>
     <label>Destino<input id="trTo" placeholder="ex.: Feira de Santana, BA" autocomplete="off"></label>
     <div class="grid2">
-      <label>Bateria agora (%)<input id="trSoc" type="number" min="1" max="100" inputmode="numeric"></label>
-      <label>Chegar com no mínimo (%)<input id="trRes" type="number" min="0" max="50" inputmode="numeric"></label>
+      <label>Bateria na saída (%)<input id="trSoc" type="number" min="1" max="100" inputmode="numeric"></label>
       <label>Carregar no máximo até (%)<input id="trMax" type="number" min="50" max="100" inputmode="numeric"></label>
+      <label>Chegar nos carregadores com (%)<input id="trResCh" type="number" min="0" max="50" inputmode="numeric"></label>
+      <label>Chegar no destino com (%)<input id="trRes" type="number" min="0" max="80" inputmode="numeric"></label>
       <label>Só rápidos acima de (kW)<input id="trMinKw" type="number" min="0" step="5" inputmode="numeric"></label>
+      <label>Como você dirige
+        <select id="trSpeed"><option value="0.93">Abaixo do limite</option><option value="1">No limite</option><option value="1.12">Um pouco acima</option><option value="1.25">Bem acima</option></select></label>
     </div>
     <label style="font-size:14px;color:var(--ink)"><input type="checkbox" id="trSlow" style="width:auto;margin:0 6px 0 0">Usar carregadores lentos se não houver rápido</label>
+    <label style="font-size:14px;color:var(--ink)"><input type="checkbox" id="trEnv" style="width:auto;margin:0 6px 0 0">Considerar relevo e clima (subidas, vento, chuva, calor)</label>
+    <label style="font-size:14px;color:var(--ink)"><input type="checkbox" id="trAlt" style="width:auto;margin:0 6px 0 0">Comparar rotas alternativas (só sem paradas no caminho)</label>
     <div id="trMsg" class="muted" style="margin-top:6px"></div>
     <div class="actions">
       <button class="btn" id="trCancel">Fechar</button>
@@ -367,7 +384,13 @@
       verified: p.IsRecentlyVerified, lastUpdate: p.DateLastStatusUpdate || p.DateLastVerified || null,
       cost: p.UsageCost || '', access: p.UsageType ? translateUsage(p.UsageType.Title) : '',
       hours: a.AccessComments || '', url: 'https://openchargemap.org/site/poi/details/'+p.ID,
-      comments: comments.slice(0,3).map(c => ({date:c.DateCreated, text:c.Comment||'', rating:c.Rating, user:c.UserName}))
+      comments: comments.slice(0,3).map(c => ({date:c.DateCreated, text:c.Comment||'', rating:c.Rating, user:c.UserName})),
+      // check-ins dos últimos 2 anos: deu certo (positivo) ou falhou (negativo)
+      checkins: comments.filter(c => c.CheckinStatusType && (Date.now() - new Date(c.DateCreated)) < 730*864e5)
+        .map(c => ({ok: c.CheckinStatusType.IsPositive === true, bad: c.CheckinStatusType.IsPositive === false, date: c.DateCreated})),
+      photos: (p.MediaItems || []).filter(m => m.ItemURL).slice(0, 6).map(m => ({url: m.ItemURL, thumb: m.ItemThumbnailURL || m.ItemURL, date: m.DateCreated})),
+      points: p.NumberOfPoints || conns.reduce((a, c) => a + (c.qty || 1), 0) || null,
+      created: p.DateCreated || null, ocmId: p.ID
     };
   }
   function translateStatus(t){
@@ -423,7 +446,7 @@
       verified:false, lastUpdate: t['check_date'] || null,
       cost: t.fee==='no' ? 'Gratuito' : (t['charge'] || (t.fee==='yes'?'Pago':'')),
       access: t.access==='private' ? 'Privado' : (t.access==='customers' ? 'Somente clientes' : (t.access ? 'Público' : '')),
-      hours: t.opening_hours || '', capacity: t.capacity || '',
+      hours: t.opening_hours || '', capacity: t.capacity || '', points: parseInt(t.capacity) || conns.reduce((a, c) => a + (c.qty || 1), 0) || null,
       url: 'https://www.openstreetmap.org/'+e.type+'/'+e.id, comments:[]
     };
   }
@@ -498,6 +521,8 @@
     render();
     const shown = layer.getLayers().length;
     let msg = shown + ' posto' + (shown===1?'':'s') + ' na área';
+    const nNew = [...cache.values()].filter(x => isNew(x) && x.lat != null && b.contains([x.lat, x.lon])).length;
+    if (nNew) msg += ` · 🆕 ${nNew} novo${nNew>1?'s':''} nos últimos 30 dias`;
     if (!apiKey) msg += ' · só OSM (adicione a chave em ⚙️)';
     if (errs.length) msg += ' · ' + errs.join(' · ');
     setStatus(msg);
@@ -512,6 +537,8 @@
     if (filters.ccs && !s.conns.some(c => /CCS|Combo/i.test(c.type))) return false;
     if (filters.type2 && !s.conns.some(c => /Tipo 2|Type 2|Mennekes|IEC 62196-2/i.test(c.type))) return false;
     if (filters.openNow && isOpenNow(s.hours) === false) return false;
+    if (filters.multi && !((s.points || 0) >= 2)) return false;
+    if (filters.newOnly && !isNew(s)) return false;
     if (filters.net && netOf(s) !== filters.net) return false;
     return true;
   }
@@ -526,7 +553,7 @@
       const color = sp.cls==='fast' ? 'var(--fast)' : sp.cls==='slow' ? 'var(--slow)' : 'var(--unk)';
       const size = sp.cls==='fast' ? 30 : 24;
       const label = sp.max ? Math.round(sp.max) : (sp.cls==='fast' ? '⚡' : '');
-      const html = `<div class="pin ${s.op===false||recentlyBroken(s.id)?'off':''} ${favs[s.id]?'fav':''}" style="position:relative;width:${size}px;height:${size}px;background:${color};opacity:${s.op===false?.55:1}">${label}</div>`;
+      const html = `<div class="pin ${s.op===false||recentlyBroken(s.id)?'off':''} ${favs[s.id]?'fav':''} ${isNew(s)?'new':''}" style="position:relative;width:${size}px;height:${size}px;background:${color};opacity:${s.op===false?.55:1}">${label}</div>`;
       L.marker([s.lat, s.lon], {icon: L.divIcon({html, iconSize:[size,size], iconAnchor:[size/2,size/2], className:''})})
         .on('click', () => openSheet(s)).addTo(layer);
     }
@@ -556,7 +583,8 @@
       <h2>${esc(s.name)}</h2>
       <div class="muted">${esc([s.operator, s.address].filter(Boolean).join(' · '))}</div>
       <div class="muted">${distTxt(s)}</div>
-      <div class="badges">${speedBadge}${opBadge}${sp.max?`<span class="badge">até ${Math.round(sp.max)} kW</span>`:''}${s.verified?'<span class="badge b-ok">verificado recentemente</span>':''}</div>
+      <div class="badges">${speedBadge}${opBadge}${sp.max?`<span class="badge">até ${Math.round(sp.max)} kW</span>`:''}${s.verified?'<span class="badge b-ok">verificado recentemente</span>':''}${relBadge(s)}${s.points?`<span class="badge">${s.points} vaga${s.points>1?'s':''}</span>`:''}${isNew(s)?'<span class="badge b-new">🆕 novo</span>':''}</div>
+      ${(s.photos||[]).length?`<div class="photos">${s.photos.map(ph => `<a href="${esc(ph.url)}" target="_blank" rel="noopener"><img src="${esc(ph.thumb)}" alt="foto do posto" loading="lazy"></a>`).join('')}</div>`:''}
       <table><tr><th>Conector</th><th>Tipo</th><th>Potência</th><th>Qtd</th></tr>${rows}</table>
       ${s.access?`<div class="muted">Acesso: ${esc(s.access)}</div>`:''}
       ${s.cost?`<div class="muted">Custo: ${esc(s.cost)}</div>`:''}
@@ -579,7 +607,8 @@
       ${comments?`<div><b style="font-size:14px">Relatos recentes de usuários</b>${comments}</div>`:''}
       <div style="margin-top:8px"><b style="font-size:14px">Minhas anotações</b>
         <textarea id="noteBox" placeholder="Ex.: 15/11 – funcionou, 1 vaga livre, precisa do app X">${esc(notes[s.id]||'')}</textarea></div>
-      <div class="src">Fonte: <a href="${s.url}" target="_blank" rel="noopener">${s.src}</a>${s.osmUrl?` + <a href="${s.osmUrl}" target="_blank" rel="noopener">OpenStreetMap</a>`:''}</div>`;
+      <div class="src">Fonte: <a href="${s.url}" target="_blank" rel="noopener">${s.src}</a>${s.osmUrl?` + <a href="${s.osmUrl}" target="_blank" rel="noopener">OpenStreetMap</a>`:''}</div>
+      <div class="src">Ajude outros motoristas: ${s.ocmId?`<a href="https://openchargemap.org/site/poi/details/${s.ocmId}" target="_blank" rel="noopener">fazer check-in / enviar foto no Open Charge Map</a> · `:''}<a href="https://openchargemap.org/site/poi/add" target="_blank" rel="noopener">cadastrar um posto que falta</a></div>`;
     $('favBtn').onclick = () => {
       if (favs[s.id]) delete favs[s.id]; else favs[s.id] = {name:s.name, lat:s.lat, lon:s.lon};
       store.set('favs', favs); render(); openSheet(s);
@@ -911,6 +940,24 @@
   let reports = store.get('reports', {});   // id -> [{d: data ISO, ok: bool}]
   const lastReport = id => (reports[id] || []).slice(-1)[0] || null;
   const recentlyBroken = id => { const r = lastReport(id); return r && !r.ok && (Date.now() - new Date(r.d)) < 30*864e5; };
+  // nota de confiabilidade 0–10 (estilo PlugScore): check-ins do Open Charge Map + seus relatos (peso 2)
+  function reliability(s){
+    const ci = s.checkins || [], mine = (reports[s.id] || []).slice(-5);
+    const pos = ci.filter(c => c.ok).length + 2*mine.filter(r => r.ok).length;
+    const neg = ci.filter(c => c.bad).length + 2*mine.filter(r => !r.ok).length;
+    const n = ci.filter(c => c.ok || c.bad).length + mine.length;
+    if (!n) return null;
+    let score = (pos + 1) / (pos + neg + 2) * 10;
+    if (s.op === false || recentlyBroken(s.id)) score = Math.min(score, 2);
+    return {score, n};
+  }
+  const isNew = s => s.created && (Date.now() - new Date(s.created)) < 30*864e5;
+  function relBadge(s){
+    const r = reliability(s);
+    if (!r) return '<span class="badge b-unk">sem avaliações</span>';
+    const cls = r.score >= 7 ? 'b-ok' : r.score >= 4 ? 'b-mid' : 'b-off';
+    return `<span class="badge ${cls}" title="baseada em ${r.n} check-in(s)">★ ${num(r.score)}/10 · ${r.n} aval.</span>`;
+  }
   function addReport(id, ok){ (reports[id] = reports[id] || []).push({d: new Date().toISOString(), ok}); reports[id] = reports[id].slice(-10); store.set('reports', reports); }
 
   // ---------- lista por distância ----------
@@ -933,7 +980,7 @@
         return `<div class="li" data-id="${esc(s.id)}">
           <span class="dot" style="width:12px;height:12px;background:${sp.cls==='fast'?'var(--fast)':sp.cls==='slow'?'var(--slow)':'var(--unk)'}"></span>
           <div style="flex:1;min-width:0"><b>${esc(s.name)}</b>${favs[s.id]?' ★':''}<br>
-          <span class="muted" style="font-size:13px">${[netOf(s), sp.max?Math.round(sp.max)+' kW':'', s.op===true?'✓ operacional':s.op===false?'✕ fora de operação':'', open===true?'aberto agora':open===false?'fechado agora':'', rep?(rep.ok?'👍 funcionou p/ você':'👎 quebrado p/ você'):''].filter(Boolean).join(' · ')}</span></div>
+          <span class="muted" style="font-size:13px">${[netOf(s), sp.max?Math.round(sp.max)+' kW':'', s.op===true?'✓ operacional':s.op===false?'✕ fora de operação':'', reliability(s)?'★ '+num(reliability(s).score)+'/10':'', isNew(s)?'🆕':'', open===true?'aberto agora':open===false?'fechado agora':'', rep?(rep.ok?'👍 funcionou p/ você':'👎 quebrado p/ você'):''].filter(Boolean).join(' · ')}</span></div>
           <b style="white-space:nowrap">${dTxt(d)}</b></div>`; }).join('') || '<p class="muted">Nenhum posto com os filtros atuais. Afaste o mapa ou mude os filtros.</p>'}</div>`;
     $('sheetBody').querySelectorAll('.li').forEach(el => el.onclick = () => { const s = cache.get(el.dataset.id); map.setView([s.lat, s.lon], Math.max(map.getZoom(), 15)); openSheet(s); });
     $('sheet').classList.add('open');
@@ -1088,7 +1135,7 @@
     const c = id ? cars.find(x => x.id === id) : {id:'c'+Date.now(), name:'Carro '+(cars.length+1), cap:45, eff:6.5, dc:60, ac:7};
     carEditing = c;
     $('carTitle').textContent = id ? 'Editar carro' : 'Novo carro';
-    $('cfName').value = c.name; $('cfCap').value = c.cap; $('cfEff').value = c.eff; $('cfDc').value = c.dc; $('cfAc').value = c.ac;
+    $('cfName').value = c.name; $('cfCap').value = c.cap; $('cfEff').value = c.eff; $('cfDc').value = c.dc; $('cfAc').value = c.ac; $('cfMass').value = c.mass || 1800;
     $('cfDel').style.display = id && cars.length > 1 ? '' : 'none';
     $('carModal').classList.add('open');
   }
@@ -1097,7 +1144,7 @@
   $('cfSave').onclick = () => {
     const c = carEditing;
     c.name = $('cfName').value.trim() || c.name;
-    for (const [k, id] of [['cap','cfCap'],['eff','cfEff'],['dc','cfDc'],['ac','cfAc']]){ const v = val(id); if (v > 0) c[k] = v; }
+    for (const [k, id] of [['cap','cfCap'],['eff','cfEff'],['dc','cfDc'],['ac','cfAc'],['mass','cfMass']]){ const v = val(id); if (v > 0) c[k] = v; }
     if (!cars.includes(c)) cars.push(c);
     saveCars(); renderCars(); $('carModal').classList.remove('open');
   };
@@ -1117,6 +1164,11 @@
     const x = Math.sin(dLat/2)**2 + Math.cos(a[0]*toR)*Math.cos(b[0]*toR)*Math.sin(dLon/2)**2;
     return 2*R_EARTH*Math.asin(Math.sqrt(x));
   }
+  function bearing(a, b){
+    const toR = Math.PI/180, y = Math.sin((b[1]-a[1])*toR)*Math.cos(b[0]*toR);
+    const x = Math.cos(a[0]*toR)*Math.sin(b[0]*toR) - Math.sin(a[0]*toR)*Math.cos(b[0]*toR)*Math.cos((b[1]-a[1])*toR);
+    return (Math.atan2(y, x)/toR + 360) % 360;
+  }
   const geoPromise = () => new Promise((res, rej) => navigator.geolocation
     ? navigator.geolocation.getCurrentPosition(p => res([p.coords.latitude, p.coords.longitude]), rej, {enableHighAccuracy:true, timeout:15000, maximumAge:60000})
     : rej(new Error('sem GPS')));
@@ -1128,17 +1180,16 @@
     const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=pt-BR&countrycodes=br&q='+encodeURIComponent(q));
     const j = await r.json();
     if (!j.length) throw new Error('Endereço não encontrado: "'+q+'"');
-    return {ll:[+j[0].lat, +j[0].lon], name: j[0].display_name.split(',').slice(0,3).join(',')};
+    return {ll:[+j[0].lat, +j[0].lon], name: j[0].display_name.split(',').slice(0,2).join(',')};
   }
-  async function osrmRoute(points){
+  async function osrmRoutes(points, alt){
     const coords = points.map(p => p.ll[1].toFixed(6)+','+p.ll[0].toFixed(6)).join(';');
-    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`);
+    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson${alt && points.length === 2 ? '&alternatives=3' : ''}`);
     if (!r.ok) throw new Error('Serviço de rotas indisponível (erro '+r.status+'). Tente de novo em instantes.');
     const j = await r.json();
     if (j.code !== 'Ok' || !j.routes.length) throw new Error('Não encontrei rota de carro entre esses pontos.');
-    return j.routes[0];
+    return j.routes.slice(0, 3);
   }
-  // reamostra a rota em pontos a cada ~step km, com quilometragem acumulada
   function sampleRoute(coords, step){
     const pts = coords.map(c => [c[1], c[0]]);
     const out = [{ll:pts[0], km:0}]; let acc = 0, lastKm = 0;
@@ -1157,43 +1208,111 @@
     }
     return {km, off: Math.sqrt(best)};
   }
-  async function stationsAlong(samples, corridorKm){
-    const found = [];
-    // OpenStreetMap: uma consulta só, pela linha da rota
-    const line = sampleFilter(samples, 3).map(s => s.ll[0].toFixed(4)+','+s.ll[1].toFixed(4)).join(',');
-    const q = `[out:json][timeout:60];nwr["amenity"="charging_station"](around:${corridorKm*1000},${line});out center tags;`;
-    const pOsm = fetch('https://overpass-api.de/api/interpreter', {method:'POST', body:'data='+encodeURIComponent(q),
-      headers:{'Content-Type':'application/x-www-form-urlencoded'}}).then(r => r.ok ? r.json() : {elements:[]})
-      .then(j => (j.elements||[]).map(fromOSM)).catch(() => []);
-    // Open Charge Map: círculos de 22 km a cada 40 km de rota
-    let ocm = [];
-    if (apiKey){
-      const centers = sampleFilter(samples, 40);
-      const seen = new Set();
-      for (let i = 0; i < centers.length; i += 4){
-        const batch = centers.slice(i, i+4).map(c => fetch('https://api.openchargemap.io/v3/poi/?output=json&compact=false&verbose=false'
-          + '&maxresults=200&distanceunit=KM&distance=22&latitude='+c.ll[0].toFixed(5)+'&longitude='+c.ll[1].toFixed(5)
-          + '&key='+encodeURIComponent(apiKey)).then(r => r.ok ? r.json() : []).catch(() => []));
-        for (const arr of await Promise.all(batch)) for (const p of arr) if (!seen.has(p.ID)){ seen.add(p.ID); ocm.push(fromOCM(p)); }
-        $('trMsg').textContent = `Buscando carregadores na rota… ${Math.min(100, Math.round((i+4)/centers.length*100))}%`;
-      }
-    }
-    const all = merge(ocm, await pOsm);
-    for (const s of all){
-      if (s.lat == null) continue;
-      cache.set(s.id, s);
-      const n = nearestOnRoute(samples, [s.lat, s.lon]);
-      if (n.off <= corridorKm) found.push(Object.assign({}, s, {along:n.km, off:n.off}));
-    }
-    return found;
-  }
   function sampleFilter(samples, everyKm){
     const out = [samples[0]]; let last = 0;
     for (const s of samples) if (s.km - last >= everyKm){ out.push(s); last = s.km; }
-    out.push(samples[samples.length-1]);
+    if (out[out.length-1] !== samples[samples.length-1]) out.push(samples[samples.length-1]);
     return out;
   }
-  // minutos para carregar de a% até b% (curva típica: desacelera após 50–80%)
+  // carregadores perto de uma ou mais rotas (consulta única para todas as alternativas)
+  async function stationsNear(sampleSets, corridorKm, say){
+    const lines = sampleSets.map(ss => sampleFilter(ss, 3).map(s => s.ll[0].toFixed(4)+','+s.ll[1].toFixed(4)).join(','));
+    const q = `[out:json][timeout:90];(${lines.map(l => `nwr["amenity"="charging_station"](around:${corridorKm*1000},${l});`).join('')});out center tags;`;
+    const pOsm = fetch('https://overpass-api.de/api/interpreter', {method:'POST', body:'data='+encodeURIComponent(q),
+      headers:{'Content-Type':'application/x-www-form-urlencoded'}}).then(r => r.ok ? r.json() : {elements:[]})
+      .then(j => (j.elements||[]).map(fromOSM)).catch(() => []);
+    const ocm = [];
+    if (apiKey){
+      const centers = [];
+      for (const ss of sampleSets) for (const c of sampleFilter(ss, 40)) if (!centers.some(x => hav(x.ll, c.ll) < 15)) centers.push(c);
+      const seen = new Set();
+      for (let i = 0; i < centers.length; i += 4){
+        const batch = centers.slice(i, i+4).map(c => fetch('https://api.openchargemap.io/v3/poi/?output=json&compact=false&verbose=false&includecomments=true'
+          + '&maxresults=200&distanceunit=KM&distance=22&latitude='+c.ll[0].toFixed(5)+'&longitude='+c.ll[1].toFixed(5)
+          + '&key='+encodeURIComponent(apiKey)).then(r => r.ok ? r.json() : []).catch(() => []));
+        for (const arr of await Promise.all(batch)) for (const p of arr) if (!seen.has(p.ID)){ seen.add(p.ID); ocm.push(fromOCM(p)); }
+        say(`Buscando carregadores na rota… ${Math.min(100, Math.round((i+4)/centers.length*100))}%`);
+      }
+    }
+    const all = merge(ocm, await pOsm).filter(s => s.lat != null);
+    all.forEach(s => cache.set(s.id, s));
+    return all;
+  }
+  function candidatesFor(samples, all, corridorKm){
+    const out = [];
+    for (const s of all){
+      const n = nearestOnRoute(samples, [s.lat, s.lon]);
+      if (n.off <= corridorKm) out.push(Object.assign({}, s, {along:n.km, off:n.off}));
+    }
+    return out;
+  }
+
+  // ---------- energia ao longo da rota (relevo, clima, velocidade) ----------
+  async function elevations(pts){
+    const out = [];
+    for (let i = 0; i < pts.length; i += 100){
+      const chunk = pts.slice(i, i+100);
+      const r = await fetch('https://api.open-meteo.com/v1/elevation?latitude=' + chunk.map(p => p.ll[0].toFixed(4)).join(',') + '&longitude=' + chunk.map(p => p.ll[1].toFixed(4)).join(','));
+      if (!r.ok) throw new Error('elevação');
+      out.push(...(await r.json()).elevation);
+    }
+    return out;
+  }
+  async function weatherAt(pts){
+    const r = await fetch('https://api.open-meteo.com/v1/forecast?current=temperature_2m,precipitation,wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh&latitude='
+      + pts.map(p => p.ll[0].toFixed(3)).join(',') + '&longitude=' + pts.map(p => p.ll[1].toFixed(3)).join(','));
+    if (!r.ok) throw new Error('clima');
+    const j = await r.json();
+    return (Array.isArray(j) ? j : [j]).map(x => x.current || {});
+  }
+  async function energyModel(samples, car, o){
+    const total = samples[samples.length-1].km;
+    const speedF = o.speed || 1, marginF = 1 + refs.margin/100, mass = car.mass || 1800;
+    const info = {env:false};
+    const step = Math.max(1, total/280);
+    const pts = sampleFilter(samples, step);
+    let elev = null, wx = null;
+    if (o.env){
+      try{
+        const wpts = [pts[0], pts[Math.floor(pts.length/2)], pts[pts.length-1]];
+        [elev, wx] = await Promise.all([elevations(pts), weatherAt(wpts)]);
+        info.env = true;
+      }catch(e){ info.envFail = true; }
+    }
+    const cum = [0]; let climb = 0, desc = 0, e = 0;
+    for (let i = 1; i < pts.length; i++){
+      const d = pts[i].km - pts[i-1].km;
+      let f = speedF;
+      if (wx){
+        const w = wx[Math.min(2, Math.floor(pts[i].km / (total/3 + 1e-9)))] || {};
+        const t = w.temperature_2m, ws = w.wind_speed_10m || 0, wd = w.wind_direction_10m || 0, pr = w.precipitation || 0;
+        if (t != null) f *= t >= 30 ? 1.08 : t >= 27 ? 1.05 : t < 12 ? 1.08 : 1;
+        if (pr > 0.3) f *= 1.06;
+        const head = ws * Math.cos((wd - bearing(pts[i-1].ll, pts[i].ll)) * Math.PI/180); // >0: vento contra
+        f *= Math.min(1.3, Math.max(0.88, 1 + 0.008*head));
+      }
+      let seg = d / car.eff * f * marginF;
+      if (elev){
+        const dh = elev[i] - elev[i-1];
+        const pot = mass * 9.81 * dh / 3.6e6;   // kWh
+        if (dh > 0){ seg += pot / 0.88; climb += dh; } else { seg += pot * 0.6; desc -= dh; }
+      }
+      e += Math.max(seg, 0); cum.push(e);
+    }
+    const E = km => {
+      if (km <= 0) return 0;
+      if (km >= total) return cum[cum.length-1];
+      let lo = 0, hi = pts.length-1;
+      while (hi - lo > 1){ const m = (lo+hi) >> 1; if (pts[m].km <= km) lo = m; else hi = m; }
+      const t = (km - pts[lo].km) / ((pts[hi].km - pts[lo].km) || 1);
+      return cum[lo] + (cum[hi] - cum[lo]) * t;
+    };
+    info.climb = climb; info.desc = desc; info.wx = wx;
+    info.kmPerKwh = total / (cum[cum.length-1] || 1);
+    info.flatPerKm = speedF * marginF / car.eff;   // kWh por km para desvios
+    return {E, info};
+  }
+
   function chargeMinutes(car, a, b, stKw, dc){
     const p = Math.min(stKw || (dc ? 50 : 7), dc ? car.dc : car.ac);
     let h = 0;
@@ -1201,7 +1320,7 @@
       const f = dc ? (s < 50 ? 0.95 : s < 70 ? 0.8 : s < 80 ? 0.6 : s < 90 ? 0.4 : 0.25) : (s < 90 ? 0.95 : 0.6);
       h += (car.cap/100) / (p*f);
     }
-    return h*60 + 4; // + ~4 min para conectar/iniciar
+    return h*60 + 4;
   }
   function stInfo(s){
     let max = 0, dc = false;
@@ -1210,145 +1329,212 @@
     if (!dc && max > 22) dc = true;
     return {kw: max || (dc ? 50 : 7), dc, known: !!max};
   }
-  function planCharges(car, total, cands, o){
-    const effKm = car.eff / (1 + refs.margin/100);           // km por kWh já com margem
-    const pctPerKm = 100 / (car.cap * effKm);
-    const stops = []; let pos = 0, soc = o.soc, guard = 0;
-    const warn = [];
-    while (guard++ < 20){
-      const need = (total - pos) * pctPerKm + o.res;
+  function planCharges(car, total, cands, o, model){
+    const {E, info} = model;
+    const pct = (a, b) => (E(b) - E(a)) / car.cap * 100;
+    const detour = off => off * 1.3 * info.flatPerKm / car.cap * 100;
+    const resCh = o.resCh ?? o.res;
+    const stops = [], warn = []; let pos = 0, soc = o.soc, guard = 0;
+    while (guard++ < 25){
+      const need = pct(pos, total) + o.res;
       if (soc >= need) break;
       const ok = slow => cands.filter(s => {
         if (s.along <= pos + 0.5 || s.along >= total - 0.5 || s.op === false || recentlyBroken(s.id)) return false;
         const i = stInfo(s);
         if (!slow && !(i.dc && i.kw >= o.minKw)) return false;
         if (slow && i.dc && i.kw >= o.minKw) return false;
-        return soc - ((s.along - pos) + s.off*1.3) * pctPerKm >= o.res;
+        return soc - pct(pos, s.along) - detour(s.off) >= resCh;
       });
       let list = ok(false), slowUsed = false;
       if (!list.length && o.slow){ list = ok(true); slowUsed = true; }
       if (!list.length){
         const last = stops[stops.length-1];
-        if (last && last.to < 100){       // tenta carregar mais na parada anterior
-          const extra = 100 - last.to;
+        if (last && last.to < 100){
+          soc += 100 - last.to;
           last.min = chargeMinutes(car, last.arrive, 100, last.kw, last.dc);
-          last.to = 100; soc += extra; last.kwh = (last.to - last.arrive)/100*car.cap;
+          last.to = 100; last.kwh = (last.to - last.arrive)/100*car.cap;
           continue;
         }
         warn.push(`Sem carregador ${o.slow?'':'rápido '}conhecido ao alcance após o km ${Math.round(pos)}. Considere sair com mais bateria, aceitar carregadores lentos ou incluir uma parada.`);
         break;
       }
-      // pontuação: avançar o máximo possível, preferindo potência alta, status confirmado e pouco desvio
       const best = list.map(s => {
-        const i = stInfo(s);
-        const score = s.along - pos + Math.min(i.kw, car.dc)*0.25 + (s.op === true ? 15 : 0) + (s.verified ? 5 : 0) - s.off*8;
+        const i = stInfo(s), rel = reliability(s);
+        const score = s.along - pos + Math.min(i.kw, car.dc)*0.25 + (s.op === true ? 15 : 0) + (s.verified ? 5 : 0)
+          + (rel ? (rel.score - 5) * 4 : 0) + Math.min(s.points || 1, 4) * 2 - s.off*8;
         return {s, i, score};
       }).sort((a, b) => b.score - a.score)[0];
       const {s, i} = best;
-      const arrive = soc - ((s.along - pos) + s.off*1.3) * pctPerKm;
-      const needAfter = (total - s.along + s.off*1.3) * pctPerKm + o.res;
-      let to = needAfter <= o.max ? Math.min(o.max, Math.ceil(needAfter + 3)) : o.max;
+      const arrive = soc - pct(pos, s.along) - detour(s.off);
+      const needAfter = pct(s.along, total) + detour(s.off) + o.res;
+      // se faltar pouco para chegar direto ao destino, carrega um pouco além do máximo em vez de parar de novo
+      let to = needAfter <= o.max ? Math.min(o.max, Math.ceil(needAfter + 3))
+             : needAfter <= Math.min(100, o.max + 15) ? Math.min(100, Math.ceil(needAfter + 2)) : o.max;
       if (to <= arrive) to = Math.min(100, arrive + 10);
       stops.push({s, kw:i.kw, dc:i.dc, known:i.known, slowUsed, arrive, to, kwh:(to-arrive)/100*car.cap,
         min: chargeMinutes(car, arrive, to, i.kw, i.dc)});
-      soc = to - s.off*1.3*pctPerKm; pos = s.along;
+      soc = to - detour(s.off); pos = s.along;
     }
-    const arriveEnd = soc - (total - pos) * pctPerKm;
-    return {stops, arriveEnd, warn};
+    return {stops, arriveEnd: soc - pct(pos, total), warn};
   }
 
-  // UI do planejador
-  let trip = Object.assign({from:'', to:'', vias:[], soc:80, res:15, max:80, minKw:40, slow:true}, store.get('trip', {}));
+  // ---------- UI do planejador ----------
+  let trip = Object.assign({from:'', to:'', vias:[], soc:80, res:15, resCh:10, max:80, minKw:40, slow:true, speed:1, env:true, alt:true}, store.get('trip', {}));
+  let savedTrips = store.get('savedTrips', []);
+  let lastTrip = null;
+  const say = t => { $('trMsg').textContent = t; if (!$('tripModal').classList.contains('open')) setStatus(t); };
   function renderVias(){
     $('trVias').innerHTML = trip.vias.map((v, i) => `<label>Parada ${i+1}<span style="display:flex;gap:6px">
       <input data-via="${i}" value="${esc(v)}" placeholder="cidade ou endereço" style="flex:1"><button class="btn sm" data-rm="${i}" style="flex:none;min-width:0">✕</button></span></label>`).join('');
     $('trVias').querySelectorAll('[data-via]').forEach(inp => inp.oninput = () => trip.vias[+inp.dataset.via] = inp.value);
     $('trVias').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { trip.vias.splice(+b.dataset.rm, 1); renderVias(); });
   }
-  $('tripBtn').onclick = () => {
-    fillCarSelect($('trCar'), activeCar);
+  function renderSaved(){
+    $('trSaved').innerHTML = savedTrips.length ? `<div class="muted" style="font-size:13px">Viagens salvas</div><div class="saved">${savedTrips.map((t, i) =>
+      `<span class="chip sv" data-i="${i}">${esc(t.label)}<b data-del="${i}">✕</b></span>`).join('')}</div>` : '';
+    $('trSaved').querySelectorAll('.sv').forEach(el => el.onclick = ev => {
+      const i = +el.dataset.i;
+      if (ev.target.dataset.del != null){ savedTrips.splice(i, 1); store.set('savedTrips', savedTrips); renderSaved(); return; }
+      trip = Object.assign(trip, JSON.parse(JSON.stringify(savedTrips[i].trip))); fillTripForm();
+    });
+  }
+  function fillTripForm(){
+    fillCarSelect($('trCar'), trip.car || activeCar);
     $('trFrom').value = trip.from; $('trTo').value = trip.to;
-    $('trSoc').value = trip.soc; $('trRes').value = trip.res; $('trMax').value = trip.max; $('trMinKw').value = trip.minKw;
-    $('trSlow').checked = trip.slow; $('trMsg').textContent = '';
-    renderVias(); $('tripModal').classList.add('open');
-  };
+    $('trSoc').value = trip.soc; $('trRes').value = trip.res; $('trResCh').value = trip.resCh; $('trMax').value = trip.max; $('trMinKw').value = trip.minKw;
+    $('trSpeed').value = String(trip.speed); $('trSlow').checked = trip.slow; $('trEnv').checked = trip.env; $('trAlt').checked = trip.alt;
+    renderVias(); renderSaved();
+  }
+  function readTripForm(){
+    trip.from = $('trFrom').value.trim(); trip.to = $('trTo').value.trim();
+    trip.vias = trip.vias.map(v => v.trim()).filter(Boolean);
+    trip.soc = val('trSoc') ?? 80; trip.res = val('trRes') ?? 15; trip.resCh = val('trResCh') ?? 10; trip.max = val('trMax') ?? 80; trip.minKw = val('trMinKw') ?? 40;
+    trip.speed = parseFloat($('trSpeed').value) || 1; trip.slow = $('trSlow').checked; trip.env = $('trEnv').checked; trip.alt = $('trAlt').checked;
+    trip.car = $('trCar').value; activeCar = trip.car; saveCars();
+    store.set('trip', trip);
+  }
+  $('tripBtn').onclick = () => { fillTripForm(); $('trMsg').textContent = ''; $('tripModal').classList.add('open'); };
   $('trAddVia').onclick = () => { trip.vias.push(''); renderVias(); };
   $('trCancel').onclick = () => $('tripModal').classList.remove('open');
   $('trGo').onclick = async () => {
-    trip.from = $('trFrom').value.trim(); trip.to = $('trTo').value.trim();
-    trip.vias = trip.vias.map(v => v.trim()).filter(Boolean);
-    trip.soc = val('trSoc') ?? 80; trip.res = val('trRes') ?? 15; trip.max = val('trMax') ?? 80; trip.minKw = val('trMinKw') ?? 40;
-    trip.slow = $('trSlow').checked; store.set('trip', trip);
-    activeCar = $('trCar').value; saveCars();
+    readTripForm();
     if (!trip.to){ $('trMsg').textContent = 'Informe o destino.'; return; }
     $('trGo').disabled = true;
-    try{
-      $('trMsg').textContent = 'Localizando endereços…';
-      const pts = [];
-      for (const q of [trip.from, ...trip.vias, trip.to]){ pts.push(await geocode(q)); await new Promise(r => setTimeout(r, 300)); }
-      $('trMsg').textContent = 'Traçando a rota…';
-      const route = await osrmRoute(pts);
-      const samples = sampleRoute(route.geometry.coordinates, 1);
-      const total = route.distance/1000;
-      $('trMsg').textContent = 'Buscando carregadores na rota…';
-      const cands = await stationsAlong(samples, 5);
-      const car = carById(activeCar);
-      const plan = planCharges(car, total, cands, trip);
-      $('tripModal').classList.remove('open');
-      showTrip({pts, route, samples, total, plan, car, nCands: cands.length});
-    }catch(e){ $('trMsg').innerHTML = '<span class="v-bad">'+esc(e.message || 'Falha ao calcular a rota')+'</span>'; }
+    try{ await computeTrip(); $('tripModal').classList.remove('open'); }
+    catch(e){ $('trMsg').innerHTML = '<span class="v-bad">'+esc(e.message || 'Falha ao calcular a rota')+'</span>'; }
     finally{ $('trGo').disabled = false; }
   };
+  async function computeTrip(fromLL){
+    say('Localizando endereços…');
+    const pts = [];
+    const qs = [trip.from, ...trip.vias, trip.to];
+    for (let i = 0; i < qs.length; i++){
+      if (i === 0 && fromLL) pts.push({ll: fromLL, name: 'Minha localização'});
+      else { pts.push(await geocode(qs[i])); await new Promise(r => setTimeout(r, 300)); }
+    }
+    say('Traçando a rota…');
+    const routes = await osrmRoutes(pts, trip.alt);
+    const sets = routes.map(r => sampleRoute(r.geometry.coordinates, 1));
+    say('Buscando carregadores na rota…');
+    const all = await stationsNear(sets, 5, say);
+    const car = carById(trip.car || activeCar);
+    if (trip.env) say('Calculando relevo e clima…');
+    const variants = [];
+    for (let i = 0; i < routes.length; i++){
+      const samples = sets[i], total = routes[i].distance/1000;
+      const cands = candidatesFor(samples, all, 5);
+      const model = await energyModel(samples, car, trip);
+      const plan = planCharges(car, total, cands, trip, model);
+      const chargeMin = plan.stops.reduce((a, s) => a + s.min, 0);
+      variants.push({route: routes[i], samples, total, plan, model, nCands: cands.length, drive: routes[i].duration/60, chargeMin});
+    }
+    // melhor primeiro: viagem que fecha e com menor tempo total
+    variants.sort((a, b) => (a.plan.warn.length - b.plan.warn.length) || ((a.drive + a.chargeMin) - (b.drive + b.chargeMin)));
+    lastTrip = {pts, car, variants, sel: 0, trip: JSON.parse(JSON.stringify(trip))};
+    setStatus('');
+    showTrip();
+  }
   const hm = m => { m = Math.round(m); return m < 60 ? m+' min' : Math.floor(m/60)+'h'+String(m%60).padStart(2,'0'); };
-  function showTrip(T){
+  function showTrip(){
+    const T = lastTrip, V = T.variants[T.sel], tp = T.trip;
     routeLayer.clearLayers();
-    const latlngs = T.route.geometry.coordinates.map(c => [c[1], c[0]]);
-    L.polyline(latlngs, {color:'#1d4ed8', weight:6, opacity:.85}).addTo(routeLayer);
+    T.variants.forEach((v, i) => { if (i !== T.sel) L.polyline(v.route.geometry.coordinates.map(c => [c[1], c[0]]), {color:'#94a3b8', weight:5, opacity:.7})
+      .on('click', () => { T.sel = i; showTrip(); }).addTo(routeLayer); });
+    const latlngs = V.route.geometry.coordinates.map(c => [c[1], c[0]]);
+    L.polyline(latlngs, {color:'#1d4ed8', weight:6, opacity:.9}).addTo(routeLayer);
     const pin = (ll, txt, bg) => L.marker(ll, {icon:L.divIcon({className:'', iconSize:[28,28], iconAnchor:[14,14],
       html:`<div class="pin" style="width:28px;height:28px;background:${bg};font-size:12px">${txt}</div>`}), zIndexOffset:900}).addTo(routeLayer);
     pin(T.pts[0].ll, 'A', '#0f172a'); pin(T.pts[T.pts.length-1].ll, 'B', '#0f172a');
     T.pts.slice(1, -1).forEach((p, i) => pin(p.ll, 'P'+(i+1), '#7c3aed'));
-    T.plan.stops.forEach((st, i) => pin([st.s.lat, st.s.lon], '⚡'+(i+1), '#ea580c').on('click', () => openSheet(st.s)));
+    V.plan.stops.forEach((st, i) => pin([st.s.lat, st.s.lon], '⚡'+(i+1), '#ea580c').on('click', () => openSheet(st.s)));
     map.fitBounds(L.latLngBounds(latlngs), {padding:[40,40]});
 
-    const drive = T.route.duration/60, chargeMin = T.plan.stops.reduce((a, s) => a + s.min, 0);
-    const kwhPub = T.plan.stops.reduce((a, s) => a + s.kwh, 0);
+    const kwhPub = V.plan.stops.reduce((a, s) => a + s.kwh, 0);
     const pubLogs = logs.filter(l => l.kwh && l.cost != null);
     const price = pubLogs.length ? pubLogs.reduce((a,l)=>a+l.cost,0) / pubLogs.reduce((a,l)=>a+l.kwh,0) : refs.pub;
-    const ok = T.plan.arriveEnd >= trip.res - 0.5 && !T.plan.warn.length;
+    const ok = !V.plan.warn.length;
+    const inf = V.model.info;
     let h = `<h2>${esc(T.pts[0].name)} → ${esc(T.pts[T.pts.length-1].name)}</h2>
-      <div class="muted">${esc(T.car.name)} · saindo com ${trip.soc}%</div>
-      <div class="stats">
-        <div class="stat"><b>${num(T.total,0)} km</b><span>distância</span></div>
-        <div class="stat"><b>${hm(drive + chargeMin)}</b><span>total (${hm(drive)} dirigindo)</span></div>
-        <div class="stat"><b>${T.plan.stops.length}</b><span>parada${T.plan.stops.length===1?'':'s'} p/ carregar</span></div>
-        <div class="stat"><b>${hm(chargeMin)}</b><span>carregando</span></div>
-        <div class="stat"><b>${num(kwhPub,0)} kWh</b><span>em postos</span></div>
-        <div class="stat"><b>${brl(kwhPub*price)}</b><span>custo estimado</span></div>
+      <div class="muted">${esc(T.car.name)} · saindo com ${Math.round(tp.soc)}%</div>`;
+    if (T.variants.length > 1) h += `<div class="seg">${T.variants.map((v, i) => `<button class="${i===T.sel?'on':''}" data-v="${i}">${i===0?'⭐ ':''}${hm(v.drive+v.chargeMin)}<br><span style="font-size:11px">${num(v.total,0)} km · ${v.plan.stops.length} parada${v.plan.stops.length===1?'':'s'}${v.plan.warn.length?' ⚠':''}</span></button>`).join('')}</div>`;
+    h += `<div class="stats">
+        <div class="stat"><b>${num(V.total,0)} km</b><span>distância</span></div>
+        <div class="stat"><b>${hm(V.drive + V.chargeMin)}</b><span>total (${hm(V.drive)} dirigindo)</span></div>
+        <div class="stat"><b>${V.plan.stops.length}</b><span>parada${V.plan.stops.length===1?'':'s'} p/ carregar</span></div>
+        <div class="stat"><b>${hm(V.chargeMin)}</b><span>carregando</span></div>
+        <div class="stat"><b>${num(inf.kmPerKwh)} km/kWh</b><span>consumo previsto</span></div>
+        <div class="stat"><b>${brl(kwhPub*price)}</b><span>${num(kwhPub,0)} kWh em postos</span></div>
       </div>`;
-    if (T.plan.warn.length) h += `<div class="calc v-bad" style="margin-bottom:8px">⚠ ${T.plan.warn.map(esc).join('<br>')}</div>`;
-    if (!T.plan.stops.length && ok) h += `<div class="calc v-good" style="margin-bottom:8px"><b>Não precisa parar para carregar.</b> Você chega com ~${Math.round(T.plan.arriveEnd)}%.</div>`;
-    h += `<div class="tl"><div class="tli"><b>A · Saída</b> – ${esc(T.pts[0].name)}<br><span class="muted">bateria ${trip.soc}%</span></div>`;
-    T.plan.stops.forEach((st, i) => {
-      const s = st.s;
+    if (inf.env){
+      const w = (inf.wx || [])[0] || {};
+      h += `<div class="calc" style="font-size:13px;margin-bottom:8px">⛰ Subidas: <b>${Math.round(inf.climb)} m</b> · descidas: ${Math.round(inf.desc)} m
+        ${w.temperature_2m!=null?`<br>🌡 ${Math.round(w.temperature_2m)}°C · 💨 vento ${Math.round(w.wind_speed_10m||0)} km/h${(w.precipitation||0)>0.3?' · 🌧 chuva':''} (agora, na saída)`:''}</div>`;
+    } else if (inf.envFail) h += `<div class="muted" style="font-size:13px">Relevo e clima indisponíveis agora – cálculo sem eles.</div>`;
+    if (V.plan.warn.length) h += `<div class="calc v-bad" style="margin-bottom:8px">⚠ ${V.plan.warn.map(esc).join('<br>')}</div>`;
+    if (!V.plan.stops.length && ok) h += `<div class="calc v-good" style="margin-bottom:8px"><b>Não precisa parar para carregar.</b> Você chega com ~${Math.round(V.plan.arriveEnd)}%.</div>`;
+    h += `<div class="tl"><div class="tli"><b>A · Saída</b> – ${esc(T.pts[0].name)}<br><span class="muted">bateria ${Math.round(tp.soc)}%</span></div>`;
+    V.plan.stops.forEach((st, i) => {
+      const s = st.s, rel = reliability(s);
       h += `<div class="tli stop"><b>⚡${i+1} · ${esc(s.name)}</b> <span class="muted">km ${Math.round(s.along)}${s.off>0.3?` · ${num(s.off)} km fora da rota`:''}</span><br>
         Chega com <b>${Math.round(st.arrive)}%</b> → carregar até <b>${Math.round(st.to)}%</b> · <b>~${hm(st.min)}</b><br>
-        <span class="muted">${st.dc?'Rápido DC':'Lento AC'} ${st.known?Math.round(st.kw)+' kW':'(potência não informada)'} · seu carro aceita até ${st.dc?T.car.dc:T.car.ac} kW · ${num(st.kwh,0)} kWh${s.operator?' · '+esc(s.operator):''}${s.op===true?' · ✓ operacional':' · status não confirmado'}</span><br>
+        <span class="muted">${st.dc?'Rápido DC':'Lento AC'} ${st.known?Math.round(st.kw)+' kW':'(potência não informada)'} · seu carro aceita até ${st.dc?T.car.dc:T.car.ac} kW · ${num(st.kwh,0)} kWh${s.operator?' · '+esc(s.operator):''}${s.points?' · '+s.points+' vaga'+(s.points>1?'s':''):''}${s.op===true?' · ✓ operacional':' · status não confirmado'}${rel?' · ★ '+num(rel.score)+'/10':''}</span><br>
         <a class="mini" data-st="${s.id}">ver posto</a> · <a class="mini" href="https://waze.com/ul?ll=${s.lat},${s.lon}&navigate=yes" target="_blank" rel="noopener">Waze até aqui</a></div>`;
     });
-    h += `<div class="tli"><b>B · Chegada</b> – ${esc(T.pts[T.pts.length-1].name)}<br><span class="muted">${T.plan.warn.length ? '<span class="v-bad">chegada não garantida com os carregadores encontrados</span>' : `chega com ~<b>${Math.round(T.plan.arriveEnd)}%</b>`}</span></div></div>`;
-    // link do Google Maps com todas as paradas (as suas + as de recarga), na ordem da rota
-    const wps = T.pts.slice(1, -1).map(p => ({ll:p.ll, km: nearestOnRoute(T.samples, p.ll).km}))
-      .concat(T.plan.stops.map(st => ({ll:[st.s.lat, st.s.lon], km: st.s.along}))).sort((a, b) => a.km - b.km).slice(0, 9);
+    h += `<div class="tli"><b>B · Chegada</b> – ${esc(T.pts[T.pts.length-1].name)}<br><span class="muted">${V.plan.warn.length ? '<span class="v-bad">chegada não garantida com os carregadores encontrados</span>' : `chega com ~<b>${Math.round(V.plan.arriveEnd)}%</b>`}</span></div></div>`;
+    const wps = T.pts.slice(1, -1).map(p => ({ll:p.ll, km: nearestOnRoute(V.samples, p.ll).km}))
+      .concat(V.plan.stops.map(st => ({ll:[st.s.lat, st.s.lon], km: st.s.along}))).sort((a, b) => a.km - b.km).slice(0, 9);
     const g = `https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${T.pts[0].ll.join(',')}&destination=${T.pts[T.pts.length-1].ll.join(',')}`
       + (wps.length ? '&waypoints=' + wps.map(w => w.ll.map(x => x.toFixed(6)).join(',')).join('%7C') : '');
-    h += `<div class="actions"><a class="btn primary" href="${g}" target="_blank" rel="noopener">Abrir no Google Maps</a>
-      <button class="btn" id="trEdit">Alterar</button><button class="btn" id="trClear">Limpar rota</button></div>
-      <p class="muted" style="font-size:12px">Estimativa com consumo de ${num(T.car.eff)} km/kWh e margem de ${refs.margin}% (ajuste em ⚙️). Subidas, velocidade alta, ar-condicionado e chuva aumentam o consumo. ${T.nCands} carregadores encontrados a até 5 km da rota. Custo pelo preço médio de ${brl(price)}/kWh${pubLogs.length?' das suas recargas':''}.</p>`;
+    h += `<div class="actions"><a class="btn primary" href="${g}" target="_blank" rel="noopener">Abrir no Google Maps</a><button class="btn" id="trSave">☆ Salvar viagem</button></div>
+      <div class="calc" style="margin-top:4px"><b>Durante a viagem</b> – informe o % do painel para refazer o plano a partir de onde você está:
+        <span style="display:flex;gap:6px;margin-top:6px"><input id="trNow" type="number" min="1" max="100" inputmode="numeric" placeholder="% agora" style="flex:1;padding:9px;border:1px solid var(--line);border-radius:10px;font-size:15px">
+        <button class="btn primary sm" id="trRecalc">📍 Recalcular daqui</button></span><div id="trRecMsg" class="muted" style="font-size:13px"></div></div>
+      <div class="actions"><button class="btn" id="trEdit">Alterar</button><button class="btn" id="trClear">Limpar rota</button></div>
+      <p class="muted" style="font-size:12px">Estimativa com consumo base de ${num(T.car.eff)} km/kWh, margem de ${refs.margin}%${tp.speed!==1?`, ritmo ${tp.speed>1?'+':''}${Math.round((tp.speed-1)*100)}%`:''}${inf.env?', relevo e clima atuais':''}. ${V.nCands} carregadores a até 5 km da rota. Custo pelo preço médio de ${brl(price)}/kWh${pubLogs.length?' das suas recargas':''}. Confira sempre o status no app do operador.</p>`;
     $('sheetBody').innerHTML = h;
+    $('sheetBody').querySelectorAll('[data-v]').forEach(b => b.onclick = () => { T.sel = +b.dataset.v; showTrip(); });
     $('sheetBody').querySelectorAll('[data-st]').forEach(a => a.onclick = () => { const s = cache.get(a.dataset.st); if (s){ map.setView([s.lat, s.lon], 15); openSheet(s); } });
     $('trEdit').onclick = () => $('tripBtn').click();
-    $('trClear').onclick = () => { routeLayer.clearLayers(); $('sheet').classList.remove('open'); };
+    $('trClear').onclick = () => { routeLayer.clearLayers(); lastTrip = null; $('sheet').classList.remove('open'); };
+    $('trSave').onclick = () => {
+      const label = `${(tp.from || 'Minha localização').split(',')[0]} → ${tp.to.split(',')[0]}`;
+      savedTrips = [{label, trip: tp}, ...savedTrips.filter(x => x.label !== label)].slice(0, 6);
+      store.set('savedTrips', savedTrips); $('trSave').textContent = '★ Salva';
+    };
+    $('trRecalc').onclick = async () => {
+      const now = val('trNow');
+      if (!now){ $('trRecMsg').textContent = 'Informe o % que aparece no painel.'; return; }
+      $('trRecalc').disabled = true; $('trRecMsg').textContent = 'Obtendo sua posição…';
+      try{
+        const ll = await geoPromise();
+        const at = nearestOnRoute(V.samples, ll).km;
+        // mantém só as paradas que ainda estão à frente
+        const viasAhead = tp.vias.filter((v, i) => nearestOnRoute(V.samples, T.pts[i+1].ll).km > at + 1);
+        trip = Object.assign(JSON.parse(JSON.stringify(tp)), {from:'', soc: now, vias: viasAhead});
+        store.set('trip', trip);
+        await computeTrip(ll);
+      }catch(e){ $('trRecMsg').innerHTML = '<span class="v-bad">' + esc(e.message || 'Não consegui recalcular') + '</span>'; $('trRecalc').disabled = false; }
+    };
     $('sheet').classList.add('open');
   }
 
