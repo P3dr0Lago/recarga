@@ -76,6 +76,27 @@
   .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
   .stat{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
   .stat b{display:block;font-size:15px}.stat span{font-size:11px;color:var(--muted)}
+  .where{position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom) + 96px);z-index:950;border:0;border-radius:999px;
+         background:#2563eb;color:#fff;font-size:15px;font-weight:700;padding:12px 16px;box-shadow:0 3px 12px rgba(0,0,0,.3);
+         cursor:pointer;display:flex;align-items:center;gap:6px}
+  .where.busy .wicon{animation:spin 1s linear infinite;display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .here{position:fixed;left:10px;right:10px;top:calc(env(safe-area-inset-top) + 112px);z-index:940;background:#fff;border-radius:12px;
+        box-shadow:0 2px 10px rgba(0,0,0,.18);padding:9px 12px;font-size:14px;display:none}
+  .here.on{display:block}
+  @media(min-width:760px){.here{left:auto;width:380px}}
+  .adv{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+  .adv summary{cursor:pointer;font-size:14px;color:var(--muted)}
+  .me-dot{width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.25),0 1px 4px rgba(0,0,0,.4)}
+  .carrow{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:6px 0}
+  .carrow.act{border-color:#16a34a;background:#f0fdf4}
+  .btn.sm{min-width:0;flex:none;padding:6px 10px;font-size:13px}
+  .tl{border-left:3px solid #1d4ed8;margin:10px 0 6px 8px;padding-left:12px}
+  .tli{position:relative;padding:6px 0 10px;font-size:14px;line-height:1.5}
+  .tli::before{content:"";position:absolute;left:-19px;top:10px;width:11px;height:11px;border-radius:50%;background:#1d4ed8;border:2px solid #fff}
+  .tli.stop::before{background:#ea580c}
+  a.mini{color:var(--accent);font-size:13px;cursor:pointer;text-decoration:underline}
+  .btn:disabled{opacity:.5}
   .seg{display:flex;background:#f1f5f9;border-radius:10px;padding:3px;margin:10px 0 4px}
   .seg button{flex:1;border:0;background:none;padding:7px;border-radius:8px;font-size:14px;cursor:pointer;color:var(--muted)}
   .seg button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
@@ -92,7 +113,7 @@
       <input id="q" type="search" placeholder="Buscar cidade, endereço…" autocomplete="off">
       <button type="submit" aria-label="Buscar">🔍</button>
     </form>
-    <button class="ibtn" id="locBtn" title="Minha localização">📍</button>
+    <button class="ibtn" id="tripBtn" title="Planejar viagem">🧭</button>
     <button class="ibtn" id="histBtn" title="Minhas recargas">📒</button>
     <button class="ibtn" id="cfgBtn" title="Configurações">⚙️</button>
   </div>
@@ -106,6 +127,8 @@
   </div>
 </div>
 
+<button class="where" id="locBtn" title="Mostrar onde estou"><span class="wicon">◎</span> Onde estou</button>
+<div class="here" id="here"></div>
 <div class="status" id="status">Carregando mapa…</div>
 
 <div class="sheet" id="sheet">
@@ -117,16 +140,16 @@
 <div class="modal" id="cfg">
   <div class="card">
     <h3>Configurações</h3>
-    <p><b>Chave do Open Charge Map</b> (gratuita). Sem ela o app mostra só os postos do OpenStreetMap. Crie uma conta em
-      <a href="https://openchargemap.org/site/loginprovider/beginlogin" target="_blank" rel="noopener">openchargemap.org</a>
-      e gere a chave em <i>My Profile → My Apps → Register an application</i>.</p>
-    <input id="keyInput" placeholder="cole aqui sua API key" autocomplete="off">
-    <p><b>Referências para o "vale a pena?"</b></p>
+    <p><b>Carros</b> <span class="muted">(o destacado em verde é o que está em uso)</span></p>
+    <div id="carList"></div>
+    <button class="btn" id="carAdd" style="width:100%;margin:6px 0 10px">+ Adicionar carro</button>
+    <p><b>Referências para o "vale a pena?" e para as rotas</b></p>
     <div class="grid2">
       <label>Energia em casa (R$/kWh)<input id="refHome" type="number" step="0.01" inputmode="decimal"></label>
-      <label>Seu carro elétrico (km/kWh)<input id="refEff" type="number" step="0.1" inputmode="decimal"></label>
+      <label>Preço médio em postos (R$/kWh)<input id="refPub" type="number" step="0.01" inputmode="decimal"></label>
       <label>Gasolina (R$/litro)<input id="refFuel" type="number" step="0.01" inputmode="decimal"></label>
       <label>Carro a combustão (km/litro)<input id="refKml" type="number" step="0.1" inputmode="decimal"></label>
+      <label>Margem de segurança nas rotas (%)<input id="refMargin" type="number" step="1" inputmode="numeric"></label>
     </div>
     <div class="legend">
       <b>Legenda</b><br>
@@ -138,6 +161,13 @@
     </div>
     <p class="muted">Status "disponível agora" (vaga livre/ocupada) não é publicado de forma aberta pelas redes no Brasil.
       O app mostra o status operacional informado pela comunidade e a data da última verificação.</p>
+    <details id="keyDetails" class="adv">
+      <summary>Avançado · chave do Open Charge Map <span id="keyState"></span></summary>
+      <p>Chave gratuita, salva só neste aparelho. Sem ela o app mostra apenas os postos do OpenStreetMap.
+        Gere em <a href="https://openchargemap.org/site/profile/applications" target="_blank" rel="noopener">openchargemap.org → My Apps</a>.</p>
+      <input id="keyInput" type="password" placeholder="cole aqui sua API key" autocomplete="off">
+      <label style="font-size:13px"><input type="checkbox" id="keyShow" style="width:auto;margin:0 6px 0 0">mostrar chave</label>
+    </details>
     <div class="actions">
       <button class="btn" id="cfgCancel">Fechar</button>
       <button class="btn primary" id="cfgSave">Salvar</button>
@@ -149,6 +179,7 @@
   <div class="card">
     <h3>Registrar recarga</h3>
     <div class="muted" id="logStation"></div>
+    <label>Carro<select id="lgCar"></select></label>
     <div class="grid2">
       <label>Data e hora<input id="lgDate" type="datetime-local"></label>
       <label>Energia carregada (kWh)<input id="lgKwh" type="number" step="0.1" inputmode="decimal" placeholder="ex.: 32,5"></label>
@@ -172,6 +203,7 @@
 <div class="modal" id="histModal">
   <div class="card">
     <h3>Minhas recargas</h3>
+    <label style="font-size:13px;color:var(--muted)">Mostrar<select id="histCar"></select></label>
     <div id="histBody"></div>
     <details style="margin-top:10px"><summary class="muted">Copiar / restaurar dados (para trocar de aparelho)</summary>
       <p class="muted">Os dados ficam salvos só neste aparelho. Para levar a outro, copie o texto abaixo e cole lá.</p>
@@ -179,6 +211,48 @@
       <div class="actions"><button class="btn" id="bkCopy">Copiar</button><button class="btn" id="bkCsv">Copiar como planilha</button><button class="btn" id="bkRestore">Restaurar do texto</button></div>
     </details>
     <div class="actions"><button class="btn primary" id="histClose">Fechar</button></div>
+  </div>
+</div>
+
+<div class="modal" id="carModal">
+  <div class="card">
+    <h3 id="carTitle">Carro</h3>
+    <label>Nome (ex.: Dolphin do Pedro)<input id="cfName" maxlength="40"></label>
+    <div class="grid2">
+      <label>Bateria útil (kWh)<input id="cfCap" type="number" step="0.1" inputmode="decimal"></label>
+      <label>Consumo médio (km/kWh)<input id="cfEff" type="number" step="0.1" inputmode="decimal"></label>
+      <label>Recarga rápida máx. DC (kW)<input id="cfDc" type="number" step="1" inputmode="numeric"></label>
+      <label>Recarga lenta máx. AC (kW)<input id="cfAc" type="number" step="0.1" inputmode="decimal"></label>
+    </div>
+    <p class="muted">Esses dados estão no manual ou no site da montadora. O consumo real (km/kWh) aparece no painel do carro – use a média dos últimos dias.</p>
+    <div class="actions">
+      <button class="btn" id="cfDel" style="color:#991b1b">Excluir</button>
+      <button class="btn" id="cfCancel">Cancelar</button>
+      <button class="btn primary" id="cfSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="tripModal">
+  <div class="card">
+    <h3>Planejar viagem</h3>
+    <label>Carro<select id="trCar"></select></label>
+    <label>Saída<input id="trFrom" placeholder="Minha localização atual" autocomplete="off"></label>
+    <div id="trVias"></div>
+    <button class="btn" id="trAddVia" style="width:100%;margin:2px 0 6px">+ Adicionar parada no caminho</button>
+    <label>Destino<input id="trTo" placeholder="ex.: Feira de Santana, BA" autocomplete="off"></label>
+    <div class="grid2">
+      <label>Bateria agora (%)<input id="trSoc" type="number" min="1" max="100" inputmode="numeric"></label>
+      <label>Chegar com no mínimo (%)<input id="trRes" type="number" min="0" max="50" inputmode="numeric"></label>
+      <label>Carregar no máximo até (%)<input id="trMax" type="number" min="50" max="100" inputmode="numeric"></label>
+      <label>Só rápidos acima de (kW)<input id="trMinKw" type="number" min="0" step="5" inputmode="numeric"></label>
+    </div>
+    <label style="font-size:14px;color:var(--ink)"><input type="checkbox" id="trSlow" style="width:auto;margin:0 6px 0 0">Usar carregadores lentos se não houver rápido</label>
+    <div id="trMsg" class="muted" style="margin-top:6px"></div>
+    <div class="actions">
+      <button class="btn" id="trCancel">Fechar</button>
+      <button class="btn primary" id="trGo">Calcular rota</button>
+    </div>
   </div>
 </div>
 
@@ -193,7 +267,13 @@
   let favs = store.get('favs', {});      // id -> {name, lat, lon}
   let notes = store.get('notes', {});    // id -> texto
   let logs = store.get('logs', []);      // registros de recarga
-  let refs = Object.assign({home:0.95, eff:6.5, fuel:6.3, kml:11}, store.get('refs', {}));
+  let refs = Object.assign({home:0.95, pub:2.0, fuel:6.3, kml:11, margin:10}, store.get('refs', {}));
+  // carros: cada recarga e cada rota usam um carro
+  let cars = store.get('cars', null);
+  if (!Array.isArray(cars) || !cars.length) cars = [{id:'c1', name:'Carro 1', cap:45, eff: refs.eff || 6.5, dc:60, ac:7}];
+  let activeCar = store.get('activeCar', cars[0].id);
+  const carById = id => cars.find(c => c.id === id) || cars.find(c => c.id === activeCar) || cars[0];
+  const saveCars = () => { store.set('cars', cars); store.set('activeCar', activeCar); };
   const filters = Object.assign({fast:true, slow:true, opOnly:false, favOnly:false, ccs:false, type2:false}, store.get('filters', {}));
 
   // ---------- mapa ----------
@@ -461,10 +541,11 @@
   function analyze(e){
     const r = {};
     if (e.kwh > 0){
-      r.km = e.kwh * refs.eff;
+      const eff = carById(e.car).eff;
+      r.km = e.kwh * eff;
       if (e.cost != null){
         r.perKwh = e.cost / e.kwh;
-        r.per100 = r.perKwh * 100 / refs.eff;
+        r.per100 = r.perKwh * 100 / eff;
         r.gas100 = refs.fuel * 100 / refs.kml;
         r.gasSame = r.km / refs.kml * refs.fuel;
         r.saving = r.gasSame - e.cost;
@@ -502,12 +583,13 @@
     $('lgDate').value = d.toISOString().slice(0,16);
     ['lgKwh','lgMin','lgCost','lgS0','lgS1','lgNote'].forEach(id => $(id).value = '');
     $('lgWorth').value = '';
+    fillCarSelect($('lgCar'), activeCar);
     updLogCalc();
     $('logModal').classList.add('open');
   }
-  const readLog = () => ({kwh: val('lgKwh'), min: val('lgMin'), cost: val('lgCost')});
+  const readLog = () => ({kwh: val('lgKwh'), min: val('lgMin'), cost: val('lgCost'), car: $('lgCar').value});
   function updLogCalc(){ $('lgCalc').innerHTML = calcHtml(readLog()); }
-  ['lgKwh','lgMin','lgCost'].forEach(id => $(id).addEventListener('input', updLogCalc));
+  ['lgKwh','lgMin','lgCost','lgCar'].forEach(id => $(id).addEventListener('input', updLogCalc));
   $('lgCancel').onclick = () => $('logModal').classList.remove('open');
   $('lgSave').onclick = () => {
     const e = readLog();
@@ -517,6 +599,7 @@
       date: $('lgDate').value, s0: val('lgS0'), s1: val('lgS1'), worth: $('lgWorth').value, note: $('lgNote').value.trim()
     }));
     store.set('logs', logs);
+    activeCar = e.car; saveCars();
     $('logModal').classList.remove('open');
     openSheet(logTarget);
   };
@@ -535,6 +618,8 @@
 
   // ---------- gráfico de gastos (SVG próprio, sem bibliotecas) ----------
   let chartMode = store.get('chart', 'week');
+  let histFilter = 'all';
+  const vlogs = () => histFilter === 'all' ? logs : logs.filter(l => (l.car || cars[0].id) === histFilter);
   const MES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
   function weekStart(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay()+6)%7)); return x; }
   function buckets(mode){
@@ -550,7 +635,7 @@
         end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
         label = MES[start.getMonth()] + (start.getMonth()===0 ? '/'+String(start.getFullYear()).slice(2) : '');
       }
-      const inB = logs.filter(l => { const d = new Date(l.date); return d >= start && d < end; });
+      const inB = vlogs().filter(l => { const d = new Date(l.date); return d >= start && d < end; });
       out.push({label, cost: inB.reduce((a,l)=>a+(l.cost||0),0), kwh: inB.reduce((a,l)=>a+(l.kwh||0),0), n: inB.length});
     }
     return out;
@@ -576,24 +661,26 @@
 
   function fmtDT(d){ try{ return new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}); }catch(e){ return d; } }
   function openHist(){
-    const sorted = logs.slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
-    const kwh = logs.reduce((a,l)=>a+(l.kwh||0),0), cost = logs.reduce((a,l)=>a+(l.cost||0),0);
-    const mins = logs.reduce((a,l)=>a+(l.min||0),0);
-    const saving = logs.reduce((a,l)=>{ const r = analyze(l); return a + (r.saving||0); },0);
+    const fl = vlogs();
+    fillCarSelect($('histCar'), histFilter, true);
+    const sorted = fl.slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+    const kwh = fl.reduce((a,l)=>a+(l.kwh||0),0), cost = fl.reduce((a,l)=>a+(l.cost||0),0);
+    const mins = fl.reduce((a,l)=>a+(l.min||0),0);
+    const saving = fl.reduce((a,l)=>{ const r = analyze(l); return a + (r.saving||0); },0);
     let h = `<div class="stats">
-      <div class="stat"><b>${logs.length}</b><span>recargas</span></div>
+      <div class="stat"><b>${fl.length}</b><span>recargas</span></div>
       <div class="stat"><b>${num(kwh,0)}</b><span>kWh no total</span></div>
       <div class="stat"><b>${brl(cost)}</b><span>gasto total</span></div>
       <div class="stat"><b>${kwh?brl(cost/kwh):'–'}</b><span>média por kWh</span></div>
       <div class="stat"><b>${Math.floor(mins/60)}h${String(Math.round(mins%60)).padStart(2,'0')}</b><span>tempo carregando</span></div>
       <div class="stat"><b>${brl(saving)}</b><span>economia vs. gasolina</span></div></div>`;
-    if (logs.length) h += `<div class="seg"><button class="${chartMode==='week'?'on':''}" data-m="week">Semanal</button><button class="${chartMode==='month'?'on':''}" data-m="month">Mensal</button></div>${chartSvg(chartMode)}`;
+    if (fl.length) h += `<div class="seg"><button class="${chartMode==='week'?'on':''}" data-m="week">Semanal</button><button class="${chartMode==='month'?'on':''}" data-m="month">Mensal</button></div>${chartSvg(chartMode)}`;
     if (!sorted.length) h += '<p class="muted">Nenhuma recarga ainda. Toque num posto no mapa e use "Registrar uma recarga aqui".</p>';
     for (const l of sorted){
       const r = analyze(l);
       const w = {sim:'👍 valeu', nao:'👎 não valeu', mais_ou_menos:'🤷 mais ou menos'}[l.worth] || '';
       h += `<div class="entry"><button class="del" data-id="${l.id}">apagar</button>
-        <b>${esc(l.name)}</b><br><span class="muted">${fmtDT(l.date)}</span><br>
+        <b>${esc(l.name)}</b>${cars.length>1?` <span class="badge" style="font-size:11px">${esc(carById(l.car).name)}</span>`:''}<br><span class="muted">${fmtDT(l.date)}</span><br>
         ${l.kwh!=null?num(l.kwh)+' kWh · ':''}${l.min!=null?Math.round(l.min)+' min · ':''}${l.cost!=null?brl(l.cost):''}
         ${r.perKwh!=null?' · '+brl(r.perKwh)+'/kWh':''}${r.avgKw!=null?' · '+num(r.avgKw)+' kW':''}
         ${(l.s0!=null&&l.s1!=null)?`<br>Bateria ${l.s0}% → ${l.s1}%`:''}
@@ -605,19 +692,20 @@
     $('histBody').querySelectorAll('.del').forEach(b => b.onclick = () => {
       logs = logs.filter(l => String(l.id) !== b.dataset.id); store.set('logs', logs); openHist();
     });
-    $('backupBox').value = JSON.stringify({logs, favs, notes, refs});
+    $('backupBox').value = JSON.stringify({logs, favs, notes, refs, cars});
     $('histModal').classList.add('open');
   }
   $('histBtn').onclick = openHist;
+  $('histCar').onchange = e => { histFilter = e.target.value; openHist(); };
   $('histClose').onclick = () => $('histModal').classList.remove('open');
   async function copyText(t, btn){
     try{ await navigator.clipboard.writeText(t); btn.textContent = 'Copiado ✓'; }
     catch(e){ $('backupBox').value = t; $('backupBox').select(); btn.textContent = 'Selecione e copie'; }
   }
-  $('bkCopy').onclick = e => copyText(JSON.stringify({logs, favs, notes, refs}), e.target);
+  $('bkCopy').onclick = e => copyText(JSON.stringify({logs, favs, notes, refs, cars}), e.target);
   $('bkCsv').onclick = e => {
-    const head = 'data;posto;kwh;minutos;valor_rs;rs_por_kwh;kw_medio;bateria_ini;bateria_fim;valeu;obs';
-    const rows = logs.map(l => { const r = analyze(l); return [l.date, l.name, l.kwh, l.min, l.cost,
+    const head = 'data;carro;posto;kwh;minutos;valor_rs;rs_por_kwh;kw_medio;bateria_ini;bateria_fim;valeu;obs';
+    const rows = logs.map(l => { const r = analyze(l); return [l.date, carById(l.car).name, l.name, l.kwh, l.min, l.cost,
       r.perKwh!=null?r.perKwh.toFixed(2):'', r.avgKw!=null?r.avgKw.toFixed(1):'', l.s0, l.s1, l.worth, l.note]
       .map(v => String(v==null?'':v).replace(/;/g, ',').replace(/\./g, ',')).join(';'); });
     copyText([head, ...rows].join('\n'), e.target);
@@ -629,6 +717,7 @@
       if (d.favs) { favs = d.favs; store.set('favs', favs); }
       if (d.notes) { notes = d.notes; store.set('notes', notes); }
       if (d.refs) { refs = Object.assign(refs, d.refs); store.set('refs', refs); }
+      if (Array.isArray(d.cars) && d.cars.length) { for (const c of d.cars) if (!cars.some(x => x.id === c.id)) cars.push(c); saveCars(); }
       render(); openHist();
     }catch(err){ e.target.textContent = 'Texto inválido'; }
   };
@@ -640,17 +729,43 @@
   });
 
   // ---------- localização ----------
-  $('locBtn').onclick = () => {
-    if (!navigator.geolocation){ setStatus('Este navegador não informa a localização'); return; }
-    setStatus('Obtendo sua localização…');
-    navigator.geolocation.getCurrentPosition(p => {
-      const ll = [p.coords.latitude, p.coords.longitude];
-      if (meMarker) meMarker.setLatLng(ll);
-      else meMarker = L.circleMarker(ll, {radius:8, color:'#fff', weight:3, fillColor:'#2563eb', fillOpacity:1}).addTo(map);
-      map.setView(ll, Math.max(map.getZoom(), 13));
-    }, err => setStatus('Localização indisponível: '+(err.code===1?'permissão negada':'tente novamente')),
-    {enableHighAccuracy:true, timeout:12000});
-  };
+  let accCircle = null, hereTimer = null;
+  function showHere(html){
+    $('here').innerHTML = html; $('here').classList.add('on');
+    clearTimeout(hereTimer); hereTimer = setTimeout(() => $('here').classList.remove('on'), 9000);
+  }
+  $('here').onclick = () => $('here').classList.remove('on');
+  async function whereAmI(silent){
+    if (!navigator.geolocation){ if(!silent) setStatus('Este navegador não informa a localização'); return; }
+    $('locBtn').classList.add('busy');
+    if (!silent) setStatus('Obtendo sua localização…');
+    navigator.geolocation.getCurrentPosition(async p => {
+      $('locBtn').classList.remove('busy');
+      store.set('geoOk', true);
+      const ll = [p.coords.latitude, p.coords.longitude], acc = p.coords.accuracy;
+      const icon = L.divIcon({html:'<div class="me-dot"></div>', iconSize:[18,18], iconAnchor:[9,9], className:''});
+      if (meMarker) meMarker.setLatLng(ll); else meMarker = L.marker(ll, {icon, zIndexOffset:1000}).addTo(map);
+      if (accCircle) accCircle.setLatLng(ll).setRadius(acc);
+      else accCircle = L.circle(ll, {radius:acc, color:'#2563eb', weight:1, fillOpacity:.08, interactive:false}).addTo(map);
+      map.setView(ll, Math.max(map.getZoom(), 14));
+      // endereço de onde você está (OpenStreetMap / Nominatim, gratuito)
+      showHere('📍 <b>Você está aqui</b> · localizando endereço…');
+      try{
+        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&accept-language=pt-BR&lat=${ll[0]}&lon=${ll[1]}`);
+        const j = await r.json(), a = j.address || {};
+        const rua = [a.road, a.house_number].filter(Boolean).join(', ');
+        const bairro = a.suburb || a.neighbourhood || a.quarter || '';
+        const cidade = a.city || a.town || a.village || a.municipality || '';
+        showHere(`📍 <b>Você está em:</b> ${esc([rua, bairro, cidade].filter(Boolean).join(' – ') || j.display_name || 'local sem endereço')}<br><span class="muted">precisão de ~${Math.round(acc)} m</span>`);
+      }catch(e){
+        showHere(`📍 <b>Você está aqui</b> · ${ll[0].toFixed(5)}, ${ll[1].toFixed(5)}<br><span class="muted">precisão de ~${Math.round(acc)} m</span>`);
+      }
+    }, err => {
+      $('locBtn').classList.remove('busy');
+      if (!silent) setStatus(err.code===1 ? 'Permita o acesso à localização nas configurações do navegador' : 'Não foi possível obter a localização – tente de novo');
+    }, {enableHighAccuracy:true, timeout:15000, maximumAge:30000});
+  }
+  $('locBtn').onclick = () => whereAmI(false);
 
   // ---------- busca de endereço (Nominatim/OSM) ----------
   $('searchForm').onsubmit = async ev => {
@@ -667,19 +782,309 @@
   };
 
   // ---------- configurações ----------
-  const refIds = {home:'refHome', eff:'refEff', fuel:'refFuel', kml:'refKml'};
+  const refIds = {home:'refHome', pub:'refPub', fuel:'refFuel', kml:'refKml', margin:'refMargin'};
+  $('keyShow').onchange = e => $('keyInput').type = e.target.checked ? 'text' : 'password';
   $('cfgBtn').onclick = () => {
-    $('keyInput').value = apiKey;
+    $('keyInput').value = apiKey; $('keyInput').type = 'password'; $('keyShow').checked = false;
+    $('keyState').textContent = apiKey ? '✓ configurada' : '⚠ não configurada';
+    $('keyDetails').open = !apiKey;
     for (const k in refIds) $(refIds[k]).value = refs[k];
+    renderCars();
     $('cfg').classList.add('open');
   };
   $('cfgCancel').onclick = () => $('cfg').classList.remove('open');
   $('cfgSave').onclick = () => {
-    for (const k in refIds){ const v = val(refIds[k]); if (v > 0) refs[k] = v; }
+    for (const k in refIds){ const v = val(refIds[k]); if (v > 0 || (k==='margin' && v === 0)) refs[k] = v; }
     store.set('refs', refs);
     apiKey = $('keyInput').value.trim(); store.set('key', apiKey);
     $('cfg').classList.remove('open'); cache.clear(); load();
   };
+
+  // ---------- carros ----------
+  function fillCarSelect(sel, value, withAll){
+    sel.innerHTML = (withAll ? '<option value="all">Todos os carros</option>' : '') +
+      cars.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+    sel.value = value && (value === 'all' ? withAll : cars.some(c => c.id === value)) ? value : (withAll ? 'all' : cars[0].id);
+    sel.parentElement.style.display = (cars.length > 1 || !withAll) ? '' : 'none';
+  }
+  function renderCars(){
+    $('carList').innerHTML = cars.map(c => `
+      <div class="carrow ${c.id===activeCar?'act':''}" data-id="${c.id}">
+        <div><b>${esc(c.name)}</b>${c.id===activeCar?' <span class="badge b-ok" style="font-size:11px">em uso</span>':''}<br>
+        <span class="muted" style="font-size:13px">${num(c.cap)} kWh · ${num(c.eff)} km/kWh · DC ${num(c.dc,0)} kW · AC ${num(c.ac)} kW · ~${num(c.cap*c.eff,0)} km</span></div>
+        <div style="display:flex;gap:6px">${c.id!==activeCar?`<button class="btn sm" data-use="${c.id}">Usar</button>`:''}<button class="btn sm" data-edit="${c.id}">Editar</button></div>
+      </div>`).join('');
+    $('carList').querySelectorAll('[data-use]').forEach(b => b.onclick = () => { activeCar = b.dataset.use; saveCars(); renderCars(); });
+    $('carList').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editCar(b.dataset.edit));
+  }
+  let carEditing = null;
+  function editCar(id){
+    const c = id ? cars.find(x => x.id === id) : {id:'c'+Date.now(), name:'Carro '+(cars.length+1), cap:45, eff:6.5, dc:60, ac:7};
+    carEditing = c;
+    $('carTitle').textContent = id ? 'Editar carro' : 'Novo carro';
+    $('cfName').value = c.name; $('cfCap').value = c.cap; $('cfEff').value = c.eff; $('cfDc').value = c.dc; $('cfAc').value = c.ac;
+    $('cfDel').style.display = id && cars.length > 1 ? '' : 'none';
+    $('carModal').classList.add('open');
+  }
+  $('carAdd').onclick = () => editCar(null);
+  $('cfCancel').onclick = () => $('carModal').classList.remove('open');
+  $('cfSave').onclick = () => {
+    const c = carEditing;
+    c.name = $('cfName').value.trim() || c.name;
+    for (const [k, id] of [['cap','cfCap'],['eff','cfEff'],['dc','cfDc'],['ac','cfAc']]){ const v = val(id); if (v > 0) c[k] = v; }
+    if (!cars.includes(c)) cars.push(c);
+    saveCars(); renderCars(); $('carModal').classList.remove('open');
+  };
+  $('cfDel').onclick = () => {
+    if (!$('cfDel').dataset.confirm){ $('cfDel').dataset.confirm = '1'; $('cfDel').textContent = 'Toque de novo p/ excluir'; return; }
+    delete $('cfDel').dataset.confirm; $('cfDel').textContent = 'Excluir';
+    cars = cars.filter(c => c !== carEditing);
+    if (!cars.some(c => c.id === activeCar)) activeCar = cars[0].id;
+    saveCars(); renderCars(); $('carModal').classList.remove('open');
+  };
+
+  // ---------- planejador de viagem ----------
+  const routeLayer = L.layerGroup().addTo(map);
+  const R_EARTH = 6371;
+  function hav(a, b){ // km entre [lat,lon]
+    const toR = Math.PI/180, dLat = (b[0]-a[0])*toR, dLon = (b[1]-a[1])*toR;
+    const x = Math.sin(dLat/2)**2 + Math.cos(a[0]*toR)*Math.cos(b[0]*toR)*Math.sin(dLon/2)**2;
+    return 2*R_EARTH*Math.asin(Math.sqrt(x));
+  }
+  const geoPromise = () => new Promise((res, rej) => navigator.geolocation
+    ? navigator.geolocation.getCurrentPosition(p => res([p.coords.latitude, p.coords.longitude]), rej, {enableHighAccuracy:true, timeout:15000, maximumAge:60000})
+    : rej(new Error('sem GPS')));
+  async function geocode(q){
+    if (!q || /^minha localiza/i.test(q)){
+      try { const ll = await geoPromise(); return {ll, name:'Minha localização'}; }
+      catch(e){ throw new Error('Não consegui sua localização. Digite o endereço de saída.'); }
+    }
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=pt-BR&countrycodes=br&q='+encodeURIComponent(q));
+    const j = await r.json();
+    if (!j.length) throw new Error('Endereço não encontrado: "'+q+'"');
+    return {ll:[+j[0].lat, +j[0].lon], name: j[0].display_name.split(',').slice(0,3).join(',')};
+  }
+  async function osrmRoute(points){
+    const coords = points.map(p => p.ll[1].toFixed(6)+','+p.ll[0].toFixed(6)).join(';');
+    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`);
+    if (!r.ok) throw new Error('Serviço de rotas indisponível (erro '+r.status+'). Tente de novo em instantes.');
+    const j = await r.json();
+    if (j.code !== 'Ok' || !j.routes.length) throw new Error('Não encontrei rota de carro entre esses pontos.');
+    return j.routes[0];
+  }
+  // reamostra a rota em pontos a cada ~step km, com quilometragem acumulada
+  function sampleRoute(coords, step){
+    const pts = coords.map(c => [c[1], c[0]]);
+    const out = [{ll:pts[0], km:0}]; let acc = 0, lastKm = 0;
+    for (let i = 1; i < pts.length; i++){
+      acc += hav(pts[i-1], pts[i]);
+      if (acc - lastKm >= step || i === pts.length-1){ out.push({ll:pts[i], km:acc}); lastKm = acc; }
+    }
+    return out;
+  }
+  function nearestOnRoute(samples, ll){
+    let best = Infinity, km = 0;
+    const cosLat = Math.cos(ll[0]*Math.PI/180);
+    for (const s of samples){
+      const dy = (s.ll[0]-ll[0])*111.2, dx = (s.ll[1]-ll[1])*111.2*cosLat, d = dx*dx + dy*dy;
+      if (d < best){ best = d; km = s.km; }
+    }
+    return {km, off: Math.sqrt(best)};
+  }
+  async function stationsAlong(samples, corridorKm){
+    const found = [];
+    // OpenStreetMap: uma consulta só, pela linha da rota
+    const line = sampleFilter(samples, 3).map(s => s.ll[0].toFixed(4)+','+s.ll[1].toFixed(4)).join(',');
+    const q = `[out:json][timeout:60];nwr["amenity"="charging_station"](around:${corridorKm*1000},${line});out center tags;`;
+    const pOsm = fetch('https://overpass-api.de/api/interpreter', {method:'POST', body:'data='+encodeURIComponent(q),
+      headers:{'Content-Type':'application/x-www-form-urlencoded'}}).then(r => r.ok ? r.json() : {elements:[]})
+      .then(j => (j.elements||[]).map(fromOSM)).catch(() => []);
+    // Open Charge Map: círculos de 22 km a cada 40 km de rota
+    let ocm = [];
+    if (apiKey){
+      const centers = sampleFilter(samples, 40);
+      const seen = new Set();
+      for (let i = 0; i < centers.length; i += 4){
+        const batch = centers.slice(i, i+4).map(c => fetch('https://api.openchargemap.io/v3/poi/?output=json&compact=false&verbose=false'
+          + '&maxresults=200&distanceunit=KM&distance=22&latitude='+c.ll[0].toFixed(5)+'&longitude='+c.ll[1].toFixed(5)
+          + '&key='+encodeURIComponent(apiKey)).then(r => r.ok ? r.json() : []).catch(() => []));
+        for (const arr of await Promise.all(batch)) for (const p of arr) if (!seen.has(p.ID)){ seen.add(p.ID); ocm.push(fromOCM(p)); }
+        $('trMsg').textContent = `Buscando carregadores na rota… ${Math.min(100, Math.round((i+4)/centers.length*100))}%`;
+      }
+    }
+    const all = merge(ocm, await pOsm);
+    for (const s of all){
+      if (s.lat == null) continue;
+      cache.set(s.id, s);
+      const n = nearestOnRoute(samples, [s.lat, s.lon]);
+      if (n.off <= corridorKm) found.push(Object.assign({}, s, {along:n.km, off:n.off}));
+    }
+    return found;
+  }
+  function sampleFilter(samples, everyKm){
+    const out = [samples[0]]; let last = 0;
+    for (const s of samples) if (s.km - last >= everyKm){ out.push(s); last = s.km; }
+    out.push(samples[samples.length-1]);
+    return out;
+  }
+  // minutos para carregar de a% até b% (curva típica: desacelera após 50–80%)
+  function chargeMinutes(car, a, b, stKw, dc){
+    const p = Math.min(stKw || (dc ? 50 : 7), dc ? car.dc : car.ac);
+    let h = 0;
+    for (let s = Math.floor(a); s < Math.ceil(b); s++){
+      const f = dc ? (s < 50 ? 0.95 : s < 70 ? 0.8 : s < 80 ? 0.6 : s < 90 ? 0.4 : 0.25) : (s < 90 ? 0.95 : 0.6);
+      h += (car.cap/100) / (p*f);
+    }
+    return h*60 + 4; // + ~4 min para conectar/iniciar
+  }
+  function stInfo(s){
+    let max = 0, dc = false;
+    for (const c of s.conns){ if (c.kw) max = Math.max(max, c.kw); if (c.dc) dc = true; }
+    if (!max && dc) max = 50;
+    if (!dc && max > 22) dc = true;
+    return {kw: max || (dc ? 50 : 7), dc, known: !!max};
+  }
+  function planCharges(car, total, cands, o){
+    const effKm = car.eff / (1 + refs.margin/100);           // km por kWh já com margem
+    const pctPerKm = 100 / (car.cap * effKm);
+    const stops = []; let pos = 0, soc = o.soc, guard = 0;
+    const warn = [];
+    while (guard++ < 20){
+      const need = (total - pos) * pctPerKm + o.res;
+      if (soc >= need) break;
+      const ok = slow => cands.filter(s => {
+        if (s.along <= pos + 0.5 || s.along >= total - 0.5 || s.op === false) return false;
+        const i = stInfo(s);
+        if (!slow && !(i.dc && i.kw >= o.minKw)) return false;
+        if (slow && i.dc && i.kw >= o.minKw) return false;
+        return soc - ((s.along - pos) + s.off*1.3) * pctPerKm >= o.res;
+      });
+      let list = ok(false), slowUsed = false;
+      if (!list.length && o.slow){ list = ok(true); slowUsed = true; }
+      if (!list.length){
+        const last = stops[stops.length-1];
+        if (last && last.to < 100){       // tenta carregar mais na parada anterior
+          const extra = 100 - last.to;
+          last.min = chargeMinutes(car, last.arrive, 100, last.kw, last.dc);
+          last.to = 100; soc += extra; last.kwh = (last.to - last.arrive)/100*car.cap;
+          continue;
+        }
+        warn.push(`Sem carregador ${o.slow?'':'rápido '}conhecido ao alcance após o km ${Math.round(pos)}. Considere sair com mais bateria, aceitar carregadores lentos ou incluir uma parada.`);
+        break;
+      }
+      // pontuação: avançar o máximo possível, preferindo potência alta, status confirmado e pouco desvio
+      const best = list.map(s => {
+        const i = stInfo(s);
+        const score = s.along - pos + Math.min(i.kw, car.dc)*0.25 + (s.op === true ? 15 : 0) + (s.verified ? 5 : 0) - s.off*8;
+        return {s, i, score};
+      }).sort((a, b) => b.score - a.score)[0];
+      const {s, i} = best;
+      const arrive = soc - ((s.along - pos) + s.off*1.3) * pctPerKm;
+      const needAfter = (total - s.along + s.off*1.3) * pctPerKm + o.res;
+      let to = needAfter <= o.max ? Math.min(o.max, Math.ceil(needAfter + 3)) : o.max;
+      if (to <= arrive) to = Math.min(100, arrive + 10);
+      stops.push({s, kw:i.kw, dc:i.dc, known:i.known, slowUsed, arrive, to, kwh:(to-arrive)/100*car.cap,
+        min: chargeMinutes(car, arrive, to, i.kw, i.dc)});
+      soc = to - s.off*1.3*pctPerKm; pos = s.along;
+    }
+    const arriveEnd = soc - (total - pos) * pctPerKm;
+    return {stops, arriveEnd, warn};
+  }
+
+  // UI do planejador
+  let trip = Object.assign({from:'', to:'', vias:[], soc:80, res:15, max:80, minKw:40, slow:true}, store.get('trip', {}));
+  function renderVias(){
+    $('trVias').innerHTML = trip.vias.map((v, i) => `<label>Parada ${i+1}<span style="display:flex;gap:6px">
+      <input data-via="${i}" value="${esc(v)}" placeholder="cidade ou endereço" style="flex:1"><button class="btn sm" data-rm="${i}" style="flex:none;min-width:0">✕</button></span></label>`).join('');
+    $('trVias').querySelectorAll('[data-via]').forEach(inp => inp.oninput = () => trip.vias[+inp.dataset.via] = inp.value);
+    $('trVias').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { trip.vias.splice(+b.dataset.rm, 1); renderVias(); });
+  }
+  $('tripBtn').onclick = () => {
+    fillCarSelect($('trCar'), activeCar);
+    $('trFrom').value = trip.from; $('trTo').value = trip.to;
+    $('trSoc').value = trip.soc; $('trRes').value = trip.res; $('trMax').value = trip.max; $('trMinKw').value = trip.minKw;
+    $('trSlow').checked = trip.slow; $('trMsg').textContent = '';
+    renderVias(); $('tripModal').classList.add('open');
+  };
+  $('trAddVia').onclick = () => { trip.vias.push(''); renderVias(); };
+  $('trCancel').onclick = () => $('tripModal').classList.remove('open');
+  $('trGo').onclick = async () => {
+    trip.from = $('trFrom').value.trim(); trip.to = $('trTo').value.trim();
+    trip.vias = trip.vias.map(v => v.trim()).filter(Boolean);
+    trip.soc = val('trSoc') ?? 80; trip.res = val('trRes') ?? 15; trip.max = val('trMax') ?? 80; trip.minKw = val('trMinKw') ?? 40;
+    trip.slow = $('trSlow').checked; store.set('trip', trip);
+    activeCar = $('trCar').value; saveCars();
+    if (!trip.to){ $('trMsg').textContent = 'Informe o destino.'; return; }
+    $('trGo').disabled = true;
+    try{
+      $('trMsg').textContent = 'Localizando endereços…';
+      const pts = [];
+      for (const q of [trip.from, ...trip.vias, trip.to]){ pts.push(await geocode(q)); await new Promise(r => setTimeout(r, 300)); }
+      $('trMsg').textContent = 'Traçando a rota…';
+      const route = await osrmRoute(pts);
+      const samples = sampleRoute(route.geometry.coordinates, 1);
+      const total = route.distance/1000;
+      $('trMsg').textContent = 'Buscando carregadores na rota…';
+      const cands = await stationsAlong(samples, 5);
+      const car = carById(activeCar);
+      const plan = planCharges(car, total, cands, trip);
+      $('tripModal').classList.remove('open');
+      showTrip({pts, route, samples, total, plan, car, nCands: cands.length});
+    }catch(e){ $('trMsg').innerHTML = '<span class="v-bad">'+esc(e.message || 'Falha ao calcular a rota')+'</span>'; }
+    finally{ $('trGo').disabled = false; }
+  };
+  const hm = m => { m = Math.round(m); return m < 60 ? m+' min' : Math.floor(m/60)+'h'+String(m%60).padStart(2,'0'); };
+  function showTrip(T){
+    routeLayer.clearLayers();
+    const latlngs = T.route.geometry.coordinates.map(c => [c[1], c[0]]);
+    L.polyline(latlngs, {color:'#1d4ed8', weight:6, opacity:.85}).addTo(routeLayer);
+    const pin = (ll, txt, bg) => L.marker(ll, {icon:L.divIcon({className:'', iconSize:[28,28], iconAnchor:[14,14],
+      html:`<div class="pin" style="width:28px;height:28px;background:${bg};font-size:12px">${txt}</div>`}), zIndexOffset:900}).addTo(routeLayer);
+    pin(T.pts[0].ll, 'A', '#0f172a'); pin(T.pts[T.pts.length-1].ll, 'B', '#0f172a');
+    T.pts.slice(1, -1).forEach((p, i) => pin(p.ll, 'P'+(i+1), '#7c3aed'));
+    T.plan.stops.forEach((st, i) => pin([st.s.lat, st.s.lon], '⚡'+(i+1), '#ea580c').on('click', () => openSheet(st.s)));
+    map.fitBounds(L.latLngBounds(latlngs), {padding:[40,40]});
+
+    const drive = T.route.duration/60, chargeMin = T.plan.stops.reduce((a, s) => a + s.min, 0);
+    const kwhPub = T.plan.stops.reduce((a, s) => a + s.kwh, 0);
+    const pubLogs = logs.filter(l => l.kwh && l.cost != null);
+    const price = pubLogs.length ? pubLogs.reduce((a,l)=>a+l.cost,0) / pubLogs.reduce((a,l)=>a+l.kwh,0) : refs.pub;
+    const ok = T.plan.arriveEnd >= trip.res - 0.5 && !T.plan.warn.length;
+    let h = `<h2>${esc(T.pts[0].name)} → ${esc(T.pts[T.pts.length-1].name)}</h2>
+      <div class="muted">${esc(T.car.name)} · saindo com ${trip.soc}%</div>
+      <div class="stats">
+        <div class="stat"><b>${num(T.total,0)} km</b><span>distância</span></div>
+        <div class="stat"><b>${hm(drive + chargeMin)}</b><span>total (${hm(drive)} dirigindo)</span></div>
+        <div class="stat"><b>${T.plan.stops.length}</b><span>parada${T.plan.stops.length===1?'':'s'} p/ carregar</span></div>
+        <div class="stat"><b>${hm(chargeMin)}</b><span>carregando</span></div>
+        <div class="stat"><b>${num(kwhPub,0)} kWh</b><span>em postos</span></div>
+        <div class="stat"><b>${brl(kwhPub*price)}</b><span>custo estimado</span></div>
+      </div>`;
+    if (T.plan.warn.length) h += `<div class="calc v-bad" style="margin-bottom:8px">⚠ ${T.plan.warn.map(esc).join('<br>')}</div>`;
+    if (!T.plan.stops.length && ok) h += `<div class="calc v-good" style="margin-bottom:8px"><b>Não precisa parar para carregar.</b> Você chega com ~${Math.round(T.plan.arriveEnd)}%.</div>`;
+    h += `<div class="tl"><div class="tli"><b>A · Saída</b> – ${esc(T.pts[0].name)}<br><span class="muted">bateria ${trip.soc}%</span></div>`;
+    T.plan.stops.forEach((st, i) => {
+      const s = st.s;
+      h += `<div class="tli stop"><b>⚡${i+1} · ${esc(s.name)}</b> <span class="muted">km ${Math.round(s.along)}${s.off>0.3?` · ${num(s.off)} km fora da rota`:''}</span><br>
+        Chega com <b>${Math.round(st.arrive)}%</b> → carregar até <b>${Math.round(st.to)}%</b> · <b>~${hm(st.min)}</b><br>
+        <span class="muted">${st.dc?'Rápido DC':'Lento AC'} ${st.known?Math.round(st.kw)+' kW':'(potência não informada)'} · seu carro aceita até ${st.dc?T.car.dc:T.car.ac} kW · ${num(st.kwh,0)} kWh${s.operator?' · '+esc(s.operator):''}${s.op===true?' · ✓ operacional':' · status não confirmado'}</span><br>
+        <a class="mini" data-st="${s.id}">ver posto</a> · <a class="mini" href="https://waze.com/ul?ll=${s.lat},${s.lon}&navigate=yes" target="_blank" rel="noopener">Waze até aqui</a></div>`;
+    });
+    h += `<div class="tli"><b>B · Chegada</b> – ${esc(T.pts[T.pts.length-1].name)}<br><span class="muted">${T.plan.warn.length ? '<span class="v-bad">chegada não garantida com os carregadores encontrados</span>' : `chega com ~<b>${Math.round(T.plan.arriveEnd)}%</b>`}</span></div></div>`;
+    // link do Google Maps com todas as paradas (as suas + as de recarga), na ordem da rota
+    const wps = T.pts.slice(1, -1).map(p => ({ll:p.ll, km: nearestOnRoute(T.samples, p.ll).km}))
+      .concat(T.plan.stops.map(st => ({ll:[st.s.lat, st.s.lon], km: st.s.along}))).sort((a, b) => a.km - b.km).slice(0, 9);
+    const g = `https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${T.pts[0].ll.join(',')}&destination=${T.pts[T.pts.length-1].ll.join(',')}`
+      + (wps.length ? '&waypoints=' + wps.map(w => w.ll.map(x => x.toFixed(6)).join(',')).join('%7C') : '');
+    h += `<div class="actions"><a class="btn primary" href="${g}" target="_blank" rel="noopener">Abrir no Google Maps</a>
+      <button class="btn" id="trEdit">Alterar</button><button class="btn" id="trClear">Limpar rota</button></div>
+      <p class="muted" style="font-size:12px">Estimativa com consumo de ${num(T.car.eff)} km/kWh e margem de ${refs.margin}% (ajuste em ⚙️). Subidas, velocidade alta, ar-condicionado e chuva aumentam o consumo. ${T.nCands} carregadores encontrados a até 5 km da rota. Custo pelo preço médio de ${brl(price)}/kWh${pubLogs.length?' das suas recargas':''}.</p>`;
+    $('sheetBody').innerHTML = h;
+    $('sheetBody').querySelectorAll('[data-st]').forEach(a => a.onclick = () => { const s = cache.get(a.dataset.st); if (s){ map.setView([s.lat, s.lon], 15); openSheet(s); } });
+    $('trEdit').onclick = () => $('tripBtn').click();
+    $('trClear').onclick = () => { routeLayer.clearLayers(); $('sheet').classList.remove('open'); };
+    $('sheet').classList.add('open');
+  }
 
   // ---------- recarregar ao mover o mapa ----------
   let t = null;
@@ -688,7 +1093,8 @@
     render(); clearTimeout(t); t = setTimeout(load, 600);
   });
   load();
-  if (!apiKey) setTimeout(() => $('cfg').classList.add('open'), 800);
+  if (!apiKey) setTimeout(() => $('cfgBtn').click(), 800);
+  else if (store.get('geoOk', false)) whereAmI(true);   // já permitiu antes: abre centrado em você
 })();
 </script>
 </body>
