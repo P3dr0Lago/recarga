@@ -71,6 +71,13 @@
        box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;cursor:pointer}
   #locBtn{bottom:calc(var(--navh) + 16px);color:var(--accent)}
   #listBtn{bottom:calc(var(--navh) + 76px)}
+  #addBtn{bottom:calc(var(--navh) + 136px)}
+  .qchips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}
+  .qchips button{border:1px solid var(--line);background:var(--soft);color:var(--ink);border-radius:999px;padding:7px 11px;font-size:13px;cursor:pointer}
+  .qchips button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .bigopt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:14px;padding:14px;margin:8px 0;cursor:pointer;font-size:15px}
+  .bigopt b{display:block;font-size:16px}
+  .bigopt span.e{font-size:26px}
   #locBtn.busy svg{animation:spin 1s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
   .cta{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--navh) + 16px);z-index:950;border:0;border-radius:999px;
@@ -199,6 +206,12 @@
   .steps{display:flex;gap:6px;justify-content:center;margin:2px 0 12px}
   .steps i{width:28px;height:4px;border-radius:4px;background:var(--line)}
   .steps i.on{background:var(--accent)}
+  .cross{position:fixed;left:50%;top:calc((100% - var(--navh))/2);width:44px;height:44px;margin:-22px 0 0 -22px;z-index:960;display:none;pointer-events:none}
+  .cross svg{width:44px;height:44px;stroke:#dc2626;stroke-width:3;fill:rgba(220,38,38,.15);filter:drop-shadow(0 0 2px #fff)}
+  .pickbar{position:fixed;left:10px;right:10px;bottom:calc(var(--navh) + 12px);z-index:1160;background:var(--panel);border-radius:14px;box-shadow:var(--shadow);padding:12px;display:none;max-width:520px;margin:0 auto}
+  body.picking .cross,body.picking .pickbar{display:block}
+  body.picking .cta,body.picking .fab,body.picking .status{display:none}
+  .status.err{pointer-events:auto;cursor:pointer}
   .ver{font-size:12px;color:var(--muted);text-align:center;margin-top:10px}
 </style>
 </head>
@@ -219,9 +232,13 @@
 <div class="status hide" id="status"></div>
 <div class="here" id="here"></div>
 <button class="chpill" id="chPill" style="display:none">🔋</button>
+<button class="fab" id="addBtn" aria-label="Adicionar posto"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
 <button class="fab" id="listBtn" aria-label="Lista de postos por distância"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
 <button class="fab" id="locBtn" aria-label="Mostrar onde estou"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg></button>
 <button class="cta" id="nowBtn"><svg class="i" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>Carregar agora</button>
+<div class="cross" id="cross"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="6"/><path d="M20 2v10M20 28v10M2 20h10M28 20h10"/></svg></div>
+<div class="pickbar" id="pickBar"><div><b>Novo posto</b><br><span class="muted" style="font-size:13px">Arraste o mapa até o local exato do carregador</span></div>
+  <div class="actions" style="margin:8px 0 0"><button class="btn sm" id="pkCancel">Cancelar</button><button class="btn sm" id="pkHere">📍 Estou aqui</button><button class="btn primary" id="pkOk">Confirmar local</button></div></div>
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none">Desfazer</button></div>
 
 <nav class="nav" id="nav">
@@ -271,6 +288,31 @@
   </div>
 </div>
 
+<div class="modal" id="addModal">
+  <div class="card">
+    <h3 id="adTitle">Adicionar posto</h3>
+    <p class="muted" style="font-size:13px;margin-top:-4px">Fica salvo no seu app (e no backup). Para ajudar outros motoristas, cadastre também no Open Charge Map.</p>
+    <label>Nome do local<input id="adName" placeholder="ex.: Shopping Barra – estacionamento G2"></label>
+    <label>Tipo de carregador (toque para preencher)</label>
+    <div class="qchips" id="adPresets">
+      <button data-p="dc,60,CCS2">⚡ Rápido 60 kW</button><button data-p="dc,120,CCS2">⚡ 120 kW</button><button data-p="dc,40,CCS2">⚡ 40 kW</button>
+      <button data-p="ac,7,Tipo 2 (Mennekes)">Lento 7 kW</button><button data-p="ac,22,Tipo 2 (Mennekes)">Lento 22 kW</button><button data-p="ac,3.7,Tomada comum">Tomada</button>
+    </div>
+    <label>Rede / operadora<input id="adOp" placeholder="ex.: Tupinambá, Zletric, EZVolt"></label>
+    <div class="qchips" id="adNets"></div>
+    <div class="grid2">
+      <label>Tipo<select id="adType"><option value="dc">⚡ Rápido (DC)</option><option value="ac">Lento (AC)</option></select></label>
+      <label>Potência (kW)<input id="adKw" type="number" step="0.1" inputmode="decimal" placeholder="ex.: 60"></label>
+      <label>Conector<select id="adConn"><option>CCS2</option><option>Tipo 2 (Mennekes)</option><option>CHAdeMO</option><option>GB/T DC</option><option>GB/T AC</option><option>Tomada comum</option></select></label>
+      <label>Vagas<input id="adQty" type="number" min="1" inputmode="numeric" value="1"></label>
+    </div>
+    <label>Horário de funcionamento<input id="adHours" placeholder="ex.: 24 horas · seg-sáb 8h-22h"></label>
+    <label>Observações<textarea id="adNote" placeholder="app necessário, preço, acesso, andar do estacionamento…"></textarea></label>
+    <div class="muted" id="adPos" style="font-size:12px"></div>
+    <div class="actions"><button class="btn" id="adCancel">Cancelar</button><button class="btn primary" id="adSave">Salvar posto</button></div>
+  </div>
+</div>
+
 <div class="modal" id="cfg">
   <div class="card">
     <h3>Ajustes</h3>
@@ -285,6 +327,9 @@
       <label>Carro a combustão (km/litro)<input id="refKml" type="number" step="0.1" inputmode="decimal"></label>
       <label>Margem de segurança nas rotas (%)<input id="refMargin" type="number" step="1" inputmode="numeric"></label>
     </div>
+    <h4>Dados do mapa</h4>
+    <details class="adv" id="diagBox" style="margin-top:0;border-top:0;padding-top:0"><summary>Diagnóstico das fontes (área visível no mapa)</summary><div id="diagBody" style="font-size:14px;line-height:1.6;margin-top:6px"></div></details>
+    <div class="actions"><button class="btn" id="reloadData">↻ Recarregar dados</button><button class="btn" id="addFromCfg">+ Adicionar posto</button></div>
     <h4>Aparência</h4>
     <div class="seg" id="themeSeg"><button data-t="auto">Automático</button><button data-t="light">Claro</button><button data-t="dark">Escuro</button></div>
     <p class="muted" style="font-size:13px">Disponibilidade "vaga livre/ocupada" em tempo real não é publicada de forma aberta pelas redes no Brasil. O app mostra o status informado pela comunidade, a nota de confiabilidade e a data da última verificação.</p>
@@ -475,9 +520,9 @@
   const statusEl = $('status');
   let statusT = null;
   const setStatus = t => {
-    statusEl.textContent = t || ''; statusEl.classList.toggle('hide', !t);
+    statusEl.textContent = t || ''; statusEl.classList.toggle('hide', !t); statusEl.classList.toggle('err', /⚠/.test(t || ''));
     clearTimeout(statusT);
-    if (t && !/…$/.test(t)) statusT = setTimeout(() => statusEl.classList.add('hide'), /⚠/.test(t) ? 9000 : 4000);
+    if (t && !/…$/.test(t) && !/⚠/.test(t)) statusT = setTimeout(() => statusEl.classList.add('hide'), 5000);
   };
   // aviso curto com "Desfazer" opcional
   let toastT = null;
@@ -659,11 +704,23 @@
   }
 
   // Junta as duas fontes: se um ponto do OSM estiver a menos de 60 m de um do OCM, considera o mesmo posto
+  // mesmo posto nas duas fontes? até 25 m sempre; de 25 a 60 m só se os nomes/redes combinarem
+  const norm = t => String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(w => w.length > 3 && !/^(posto|eletroposto|carregador|recarga|estacao|charging|station|shopping)$/.test(w));
+  function sameSite(p, o){
+    const d = L.latLng(p.lat, p.lon).distanceTo([o.lat, o.lon]);
+    if (d < 25) return true;
+    if (d >= 60) return false;
+    if (o.name === 'Posto de recarga') return true;           // OSM sem nome
+    const a = new Set(norm(p.name + ' ' + (p.operator||''))), b = norm(o.name + ' ' + (o.operator||''));
+    return b.some(w => a.has(w));
+  }
+  const diag = {merged: new Map(), errs: [], ok: {}};
   function merge(ocm, osm){
     const out = [...ocm];
     for (const o of osm){
       if (o.lat == null) continue;
-      const twin = ocm.find(p => L.latLng(p.lat,p.lon).distanceTo([o.lat,o.lon]) < 60);
+      const twin = ocm.find(p => sameSite(p, o));
+      if (twin) diag.merged.set(o.id, {lat:o.lat, lon:o.lon, into: twin.name});
       if (twin){
         if (!twin.hours && o.hours) twin.hours = o.hours;
         if (!twin.operator && o.operator) twin.operator = o.operator;
@@ -676,7 +733,6 @@
   }
 
   let retryT = null, retries = 0;
-  const twin = (a, b) => L.latLng(a.lat, a.lon).distanceTo([b.lat, b.lon]) < 60;
   // junta no cache sem duplicar (o mesmo posto pode vir das duas fontes)
   function addToCache(list, src){
     const vals = [...cache.values()];
@@ -692,7 +748,8 @@
   }
   function statusFor(b, errs, pending){
     const shown = layer.getLayers().length;
-    let msg = shown + ' posto' + (shown===1?'':'s') + ' na área';
+    const c = srcCounts(b);
+    let msg = shown + ' posto' + (shown===1?'':'s') + ' na área' + ` (OCM ${c.ocm} · OSM ${c.osm}${c.my?' · seus '+c.my:''})`;
     const nNew = [...cache.values()].filter(x => isNew(x) && x.lat != null && b.contains([x.lat, x.lon])).length;
     if (nNew) msg += ` · 🆕 ${nNew} novo${nNew>1?'s':''} nos últimos 30 dias`;
     if (!apiKey) msg += ' · só OSM (adicione a chave em ⚙️)';
@@ -711,8 +768,8 @@
     if (!layer.getLayers().length) setStatus('Buscando postos…');
     const errs = []; let pending = jobs.length;
     for (const [src, p] of jobs){
-      p.then(list => { addToCache(list, src); refreshNetworks(); render(); })
-       .catch(e => errs.push(e.message || 'falha de conexão'))
+      p.then(list => { addToCache(list, src); diag.ok[src] = new Date(); diag.errs = diag.errs.filter(x => x.src !== src); refreshNetworks(); render(); })
+       .catch(e => { const m = e.message || 'falha de conexão'; errs.push(m); diag.errs = diag.errs.filter(x => x.src !== src).concat({src, m, t: new Date()}); })
        .finally(() => {
          pending--;
          if (my !== reqSeq) return;            // o mapa já mudou: a busca nova cuida do aviso
@@ -813,7 +870,8 @@
         ${comments?`<div><b style="font-size:14px">Relatos recentes de usuários</b>${comments}</div>`:''}
         <div style="margin-top:8px"><b style="font-size:14px">Minhas anotações</b>
           <textarea id="noteBox" placeholder="Ex.: funcionou, 1 vaga livre, precisa do app X">${esc(notes[s.id]||'')}</textarea></div>
-        <div class="src">Fonte: <a href="${s.url}" target="_blank" rel="noopener">${s.src}</a>${s.osmUrl?` + <a href="${s.osmUrl}" target="_blank" rel="noopener">OpenStreetMap</a>`:''}</div>
+        ${s.mine?`<div class="actions"><button class="btn" id="myEdit">✏️ Editar</button><button class="btn" id="myDel">🗑 Excluir</button></div>${s.note?`<p style="font-size:14px">${esc(s.note)}</p>`:''}`:''}
+        <div class="src">Fonte: ${s.mine?'cadastrado por você':`<a href="${s.url}" target="_blank" rel="noopener">${s.src}</a>`}${s.osmUrl?` + <a href="${s.osmUrl}" target="_blank" rel="noopener">OpenStreetMap</a>`:''}</div>
         <div class="src">Ajude outros motoristas: ${s.ocmId?`<a href="https://openchargemap.org/site/poi/details/${s.ocmId}" target="_blank" rel="noopener">check-in / foto no Open Charge Map</a> · `:''}<a href="https://openchargemap.org/site/poi/add" target="_blank" rel="noopener">cadastrar posto que falta</a></div>
       </details>`;
     $('favBtn').onclick = () => {
@@ -823,6 +881,14 @@
       toast(was ? 'Removido dos favoritos' : '★ Adicionado aos favoritos');
     };
     $('logBtn').onclick = () => openLog(s);
+    if (s.mine){
+      $('myEdit').onclick = () => openAddForm(s);
+      $('myDel').onclick = () => {
+        const i = myStations.findIndex(m => m.id === s.id); if (i < 0) return;
+        const gone = myStations.splice(i, 1)[0]; saveMine(); cache.delete(gone.id); render(); $('sheet').classList.remove('open');
+        toast('Posto excluído', () => { myStations.push(gone); saveMine(); cache.set(gone.id, gone); render(); });
+      };
+    }
     $('chBtn').onclick = () => chg ? runCharge() : openCharge(s);
     if (chg) $('chBtn').textContent = '⏱ Em andamento';
     const report = ok => { addReport(s.id, ok); render(); openSheet(s); $('moreBox').open = true;
@@ -1000,7 +1066,7 @@
       logs = logs.filter(l => l !== gone); store.set('logs', logs); openHist();
       toast('Recarga apagada', () => { logs.push(gone); store.set('logs', logs); openHist(); });
     });
-    $('backupBox').value = JSON.stringify({logs, favs, notes, refs, cars});
+    $('backupBox').value = JSON.stringify({logs, favs, notes, refs, cars, myStations});
     $('histModal').classList.add('open');
   }
   $('histBtn').onclick = openHist;
@@ -1010,7 +1076,7 @@
     try{ await navigator.clipboard.writeText(t); btn.textContent = 'Copiado ✓'; }
     catch(e){ $('backupBox').value = t; $('backupBox').select(); btn.textContent = 'Selecione e copie'; }
   }
-  $('bkCopy').onclick = e => copyText(JSON.stringify({logs, favs, notes, refs, cars}), e.target);
+  $('bkCopy').onclick = e => copyText(JSON.stringify({logs, favs, notes, refs, cars, myStations}), e.target);
   $('bkCsv').onclick = e => {
     const head = 'data;carro;posto;kwh;minutos;valor_rs;rs_por_kwh;kw_medio;bateria_ini;bateria_fim;valeu;obs';
     const rows = logs.map(l => { const r = analyze(l); return [l.date, carById(l.car).name, l.name, l.kwh, l.min, l.cost,
@@ -1025,6 +1091,7 @@
       if (d.favs) { favs = d.favs; store.set('favs', favs); }
       if (d.notes) { notes = d.notes; store.set('notes', notes); }
       if (d.refs) { refs = Object.assign(refs, d.refs); store.set('refs', refs); }
+      if (Array.isArray(d.myStations)) { for (const m of d.myStations) if (!myStations.some(x => x.id === m.id)) myStations.push(m); saveMine(); myToCache(); }
       if (Array.isArray(d.cars) && d.cars.length) { for (const c of d.cars) if (!cars.some(x => x.id === c.id)) cars.push(c); saveCars(); }
       render(); openHist();
     }catch(err){ e.target.textContent = 'Texto inválido'; }
@@ -1093,7 +1160,7 @@
     $('keyState').textContent = apiKey ? '✓ configurada' : '⚠ não configurada';
     $('keyDetails').open = !apiKey;
     for (const k in refIds) $(refIds[k]).value = refs[k];
-    renderCars(); paintTheme();
+    renderCars(); paintTheme(); if ($('diagBox').open) renderDiag();
     $('cfg').classList.add('open');
   };
   $('cfgCancel').onclick = () => $('cfg').classList.remove('open');
@@ -1102,7 +1169,7 @@
     store.set('refs', refs);
     const k = $('keyInput').value.trim();
     $('cfg').classList.remove('open');
-    if (k !== apiKey){ apiKey = k; store.set('key', apiKey); cache.clear(); areas.ocm = []; areas.osm = []; load(); }
+    if (k !== apiKey){ apiKey = k; store.set('key', apiKey); cache.clear(); myToCache(); areas.ocm = []; areas.osm = []; load(); }
     else render();
     toast('Ajustes salvos ✓');
   };
@@ -1189,6 +1256,7 @@
     items.sort((a, b) => a.d - b.d);
     const dTxt = m => m < 1000 ? Math.round(m)+' m' : (m/1000).toFixed(1).replace('.', ',')+' km';
     $('sheetBody').innerHTML = `<h2>Postos por distância</h2>
+      <button class="btn sm" id="listAdd" style="float:right;margin-top:-2px">+ Adicionar posto</button>
       <div class="muted">${items.length} na área visível · a partir ${meMarker?'de você':'do centro do mapa (toque em ◎ Onde estou para usar sua posição)'}</div>
       <div class="list">${items.slice(0, 150).map(({s, sp, d}) => {
         const rep = lastReport(s.id), open = isOpenNow(s.hours);
@@ -1197,6 +1265,7 @@
           <div style="flex:1;min-width:0"><b>${esc(s.name)}</b>${favs[s.id]?' ★':''}<br>
           <span class="muted" style="font-size:13px">${[netOf(s), sp.max?Math.round(sp.max)+' kW':'', s.op===true?'✓ operacional':s.op===false?'✕ fora de operação':'', reliability(s)?'★ '+num(reliability(s).score)+'/10':'', isNew(s)?'🆕':'', open===true?'aberto agora':open===false?'fechado agora':'', rep?(rep.ok?'👍 funcionou p/ você':'👎 quebrado p/ você'):''].filter(Boolean).join(' · ')}</span></div>
           <b style="white-space:nowrap">${dTxt(d)}</b></div>`; }).join('') || '<p class="muted">Nenhum posto com os filtros atuais. Afaste o mapa ou mude os filtros.</p>'}</div>`;
+    $('listAdd').onclick = () => openAddChooser();
     $('sheetBody').querySelectorAll('.li').forEach(el => el.onclick = () => { const s = cache.get(el.dataset.id); map.setView([s.lat, s.lon], Math.max(map.getZoom(), 15)); openSheet(s); });
     $('sheet').classList.add('open');
   }
@@ -1403,7 +1472,7 @@
   };
 
   // ---------- barra de navegação ----------
-  const MODALS = ['tripModal','histModal','cfg','filtModal','logModal','chModal','carModal','onb'];
+  const MODALS = ['tripModal','histModal','cfg','filtModal','logModal','chModal','carModal','onb','addModal'];
   function syncNav(){
     const open = id => $(id).classList.contains('open');
     const tab = open('tripModal') ? 'trip' : open('histModal') ? 'hist' : open('cfg') || open('carModal') ? 'cfg' : 'map';
@@ -1457,7 +1526,7 @@
   $('themeSeg').querySelectorAll('button').forEach(b => b.onclick = () => { themePref = b.dataset.t; store.set('theme', themePref); applyTheme(); paintTheme(); });
 
   // ---------- versão e atualização ----------
-  const APP_VERSION = '2026.11.17-d';
+  const APP_VERSION = '2026.11.17-f';
   $('verTxt').textContent = APP_VERSION;
   $('updBtn').onclick = async () => {
     $('updBtn').textContent = 'verificando…';
@@ -1512,7 +1581,7 @@
     }
     if (onbStep === 2){
       const k = ($('obKey').value || '').trim();
-      if (k !== apiKey){ apiKey = k; store.set('key', apiKey); cache.clear(); areas.ocm = []; areas.osm = []; }
+      if (k !== apiKey){ apiKey = k; store.set('key', apiKey); cache.clear(); myToCache(); areas.ocm = []; areas.osm = []; }
     }
   }
   $('onbNext').onclick = () => {
@@ -1525,6 +1594,158 @@
     store.set('onboarded', true); $('onb').classList.remove('open');
   };
   $('onbAgain').onclick = () => { $('cfg').classList.remove('open'); showOnb(0); };
+
+  // ---------- postos cadastrados por você ----------
+  let myStations = store.get('myStations', []);
+  const saveMine = () => store.set('myStations', myStations);
+  function myToCache(){ for (const m of myStations) cache.set(m.id, m); }
+  myToCache();
+  function srcCounts(b){
+    const c = {ocm:0, osm:0, my:0};
+    for (const s of cache.values()){
+      if (s.lat == null || !b.contains([s.lat, s.lon])) continue;
+      if (s.mine) c.my++; else if (s.src === 'OpenStreetMap') c.osm++; else c.ocm++;
+    }
+    return c;
+  }
+  let pickEdit = null;
+  function startPick(edit){
+    pickEdit = edit || null;
+    MODALS.forEach(id => $(id).classList.remove('open')); $('addModal').classList.remove('open');
+    $('sheet').classList.remove('open');
+    if (edit) map.setView([edit.lat, edit.lon], 18);
+    else if (map.getZoom() < 16) map.setZoom(17);
+    document.body.classList.add('picking');
+  }
+  const endPick = () => document.body.classList.remove('picking');
+  $('pkCancel').onclick = endPick;
+  $('pkHere').onclick = async () => {
+    try{ const ll = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(p => res([p.coords.latitude, p.coords.longitude]), rej, {enableHighAccuracy:true, timeout:12000}));
+      map.setView(ll, 18); }catch(e){ toast('Não consegui sua localização'); }
+  };
+  $('pkOk').onclick = () => { const c = map.getCenter(); endPick(); openAddForm(pickEdit ? Object.assign({}, pickEdit, {lat:c.lat, lon:c.lng}) : {lat:c.lat, lon:c.lng}); };
+  map.on('contextmenu', e => { if (!document.body.classList.contains('picking')) openAddForm({lat:e.latlng.lat, lon:e.latlng.lng}); }); // toque longo no mapa
+  let adTarget = null;
+  function openAddForm(t){
+    adTarget = t;
+    const c0 = (t.conns || [])[0] || {};
+    $('adTitle').textContent = t.id ? 'Editar posto' : 'Adicionar posto';
+    $('adName').value = t.id ? t.name : ''; $('adOp').value = t.operator || '';
+    $('adType').value = c0.dc === false ? 'ac' : 'dc'; $('adKw').value = c0.kw || '';
+    $('adConn').value = c0.type || 'CCS2'; $('adQty').value = t.points || 1;
+    $('adHours').value = t.hours || ''; $('adNote').value = t.note || '';
+    $('adPos').innerHTML = `Local: ${t.lat.toFixed(5)}, ${t.lon.toFixed(5)} · <a style="cursor:pointer;text-decoration:underline" id="adMove">ajustar no mapa</a>`;
+    $('adMove').onclick = () => { $('addModal').classList.remove('open'); startPick(Object.assign({}, t, {id: t.id || null})); };
+    fillQuickChips(t);
+    $('addModal').classList.add('open');
+  }
+  $('adCancel').onclick = () => $('addModal').classList.remove('open');
+  $('adSave').onclick = () => {
+    const name = $('adName').value.trim();
+    if (!name){ $('adName').focus(); toast('Dê um nome ao local'); return; }
+    const dc = $('adType').value === 'dc', kw = val('adKw'), qty = Math.max(1, parseInt($('adQty').value) || 1);
+    const st = Object.assign(adTarget.id ? (myStations.find(m => m.id === adTarget.id) || {}) : {}, {
+      id: adTarget.id || 'my-' + Date.now(), mine: true, src: 'Cadastrado por você', name, operator: $('adOp').value.trim(),
+      address: '', lat: adTarget.lat, lon: adTarget.lon, conns: [{type: $('adConn').value, kw, dc, qty}],
+      op: null, statusText: 'Cadastrado por você', hours: $('adHours').value.trim(), note: $('adNote').value.trim(),
+      cost: '', access: '', url: 'https://openchargemap.org/site/poi/add', comments: [], checkins: [], photos: [], points: qty, created: null
+    });
+    if (!myStations.includes(st)) myStations.push(st);
+    saveMine(); cache.set(st.id, st); render();
+    $('addModal').classList.remove('open');
+    openSheet(st);
+    toast(adTarget.id ? 'Posto atualizado ✓' : '✓ Posto adicionado ao seu mapa');
+  };
+  $('addFromCfg').onclick = () => openAddChooser();
+
+  // ---------- adicionar posto: jeito rápido ----------
+  function parseCoords(t){
+    t = decodeURIComponent(String(t || ''));
+    const pats = [/geo:(-?\d+\.?\d*),(-?\d+\.?\d*)/, /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, /@(-?\d+\.\d+),\s*(-?\d+\.\d+)/,
+      /[?&](?:q|ll|query|destination|daddr)=(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/, /(-?\d{1,2}\.\d{3,})\s*[,;]\s*(-?\d{1,3}\.\d{3,})/];
+    for (const p of pats){ const m = t.match(p); if (m){ const a = +m[1], b = +m[2]; if (Math.abs(a) <= 90 && Math.abs(b) <= 180) return [a, b]; } }
+    return null;
+  }
+  function openAddChooser(){
+    MODALS.forEach(id => $(id).classList.remove('open'));
+    $('sheetBody').innerHTML = `<h2>Adicionar posto</h2>
+      <div class="muted">Como você quer marcar o local?</div>
+      <button class="bigopt" id="acHere"><span class="e">📍</span><span><b>Estou no posto agora</b><span class="muted" style="font-size:13px">Usa a localização do celular</span></span></button>
+      <button class="bigopt" id="acMap"><span class="e">🗺️</span><span><b>Marcar no mapa</b><span class="muted" style="font-size:13px">Arraste o mapa até o local</span></span></button>
+      <div class="bigopt" style="display:block;cursor:default"><b>📋 Colar coordenadas ou link</b>
+        <span class="muted" style="font-size:13px">No Google Maps, toque e segure no local e copie os números (ex.: -12.98, -38.45)</span>
+        <span style="display:flex;gap:6px;margin-top:8px"><input id="acTxt" placeholder="-12.98, -38.45 ou link" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:15px;background:var(--panel);color:var(--ink)">
+        <button class="btn primary sm" id="acGo">OK</button></span><span id="acMsg" class="muted" style="font-size:13px"></span></div>`;
+    $('acHere').onclick = async () => {
+      $('acHere').querySelector('b').textContent = 'Obtendo localização…';
+      try{
+        const ll = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(p => res([p.coords.latitude, p.coords.longitude]), rej, {enableHighAccuracy:true, timeout:15000, maximumAge:0}));
+        $('sheet').classList.remove('open'); map.setView(ll, 18); openAddForm({lat:ll[0], lon:ll[1]});
+      }catch(e){ $('acHere').querySelector('b').textContent = 'Não consegui a localização – use "Marcar no mapa"'; }
+    };
+    $('acMap').onclick = () => startPick();
+    $('acGo').onclick = () => {
+      const ll = parseCoords($('acTxt').value);
+      if (!ll){ $('acMsg').innerHTML = /goo\.gl|maps\.app/.test($('acTxt').value)
+        ? '<span class="v-bad">Esse link curto não traz as coordenadas. No Google Maps, toque e segure no local e copie os números.</span>'
+        : '<span class="v-bad">Não reconheci coordenadas nesse texto.</span>'; return; }
+      $('sheet').classList.remove('open'); map.setView(ll, 18); openAddForm({lat:ll[0], lon:ll[1]});
+    };
+    $('sheet').scrollTop = 0; $('sheet').classList.add('open');
+  }
+  $('addBtn').onclick = openAddChooser;
+  const NETS = ['Tupinambá','Zletric','EZVolt','Shell Recharge','BYD','Volvo','Raízen','Enel X','Neoenergia','WEG'];
+  function fillQuickChips(t){
+    const known = [...new Set([...cache.values()].map(netOf).filter(Boolean))];
+    const nets = [...new Set([...NETS, ...known])].slice(0, 14);
+    $('adNets').innerHTML = nets.map(n => `<button data-n="${esc(n)}">${esc(n)}</button>`).join('');
+    const paint = () => {
+      $('adNets').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.n === $('adOp').value.trim()));
+      $('adPresets').querySelectorAll('button').forEach(b => { const [ty, kw, cn] = b.dataset.p.split(',');
+        b.classList.toggle('on', $('adType').value === ty && String(val('adKw')) === kw && $('adConn').value === cn); });
+    };
+    $('adNets').querySelectorAll('button').forEach(b => b.onclick = () => { $('adOp').value = b.dataset.n; paint(); });
+    $('adPresets').querySelectorAll('button').forEach(b => b.onclick = () => {
+      const [ty, kw, cn] = b.dataset.p.split(','); $('adType').value = ty; $('adKw').value = kw; $('adConn').value = cn; paint(); });
+    ['adOp','adKw','adType','adConn'].forEach(id => $(id).oninput = $(id).onchange = paint);
+    paint();
+    // sugere o nome pelo endereço (OpenStreetMap)
+    if (!t.id){
+      $('adName').placeholder = 'buscando o nome do local…';
+      fetchT(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&accept-language=pt-BR&lat=${t.lat}&lon=${t.lon}`, {}, 8000)
+        .then(r => r.json()).then(j => {
+          const a = j.address || {}, nm = j.name || a.amenity || a.shop || a.mall || a.building || '';
+          const rua = [a.road, a.house_number].filter(Boolean).join(', ');
+          const sug = nm ? nm + (a.suburb ? ' – ' + a.suburb : '') : rua ? rua + (a.suburb ? ' – ' + a.suburb : '') : '';
+          if (sug && !$('adName').value.trim()) $('adName').value = sug;
+          $('adName').placeholder = 'ex.: Shopping Barra – estacionamento G2';
+        }).catch(() => { $('adName').placeholder = 'ex.: Shopping Barra – estacionamento G2'; });
+    }
+  }
+
+  // ---------- diagnóstico das fontes ----------
+  function renderDiag(){
+    const b = map.getBounds(), c = srcCounts(b);
+    let hidden = 0, shown = 0;
+    for (const s of cache.values()) if (s.lat != null && b.contains([s.lat, s.lon])) { if (passes(s, speedOf(s))) shown++; else hidden++; }
+    const merged = [...diag.merged.values()].filter(m => b.contains([m.lat, m.lon]));
+    const hhmm = d => d ? d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) : '–';
+    const err = src => diag.errs.find(e => e.src === src);
+    const line = (label, n, src) => `<div>• <b>${label}:</b> ${n} posto${n===1?'':'s'} · ${err(src) ? `<span class="v-bad">⚠ ${esc(err(src).m)} (${hhmm(err(src).t)})</span>` : diag.ok[src] ? 'ok às ' + hhmm(diag.ok[src]) : src === 'ocm' && !apiKey ? '<span class="v-bad">sem chave</span>' : 'ainda não consultado'}</div>`;
+    $('diagBody').innerHTML = line('Open Charge Map', c.ocm, 'ocm') + line('OpenStreetMap', c.osm, 'osm')
+      + `<div>• <b>Cadastrados por você:</b> ${c.my}</div>`
+      + `<div>• <b>Juntados por serem o mesmo local:</b> ${merged.length}${merged.length?` <details style="display:inline"><summary class="muted" style="display:inline;cursor:pointer">ver</summary><div class="muted" style="font-size:12px">${merged.slice(0, 20).map(m => 'OSM → ' + esc(m.into)).join('<br>')}</div></details>`:''}</div>`
+      + `<div>• <b>Escondidos pelos filtros:</b> ${hidden}${hidden?' (limpe em Filtros para ver todos)':''}</div>`
+      + `<div>• <b>Mostrados no mapa:</b> ${shown}</div>`
+      + `<p class="muted" style="font-size:12px">O PlugShare e alguns apps de rede têm bases próprias e fechadas. Um posto que só existe lá não aparece aqui: cadastre-o em “+ Adicionar posto” (fica no seu app) e, se puder, no Open Charge Map para todos.</p>`;
+  }
+  $('diagBox').ontoggle = () => { if ($('diagBox').open) renderDiag(); };
+  $('reloadData').onclick = () => {
+    for (const [id, s] of cache) if (!s.mine) cache.delete(id);
+    areas.ocm = []; areas.osm = []; diag.merged.clear(); diag.errs = []; retries = 0;
+    $('cfg').classList.remove('open'); load(); toast('Recarregando postos da área…');
+  };
+  statusEl.onclick = () => { if (statusEl.classList.contains('err')) statusEl.classList.add('hide'); };
 
   // ---------- carros ----------
   function fillCarSelect(sel, value, withAll){
