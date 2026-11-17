@@ -476,8 +476,8 @@
   const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter',
                     'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
   let overpassBest = 0;
-  async function overpass(q, ms = 30000){
-    for (let k = 0; k < OVERPASS.length; k++){
+  async function overpass(q, ms = 30000, maxTries = OVERPASS.length){
+    for (let k = 0; k < Math.min(maxTries, OVERPASS.length); k++){
       const i = (overpassBest + k) % OVERPASS.length;
       try{
         const r = await fetchT(OVERPASS[i], {method:'POST', body:'data='+encodeURIComponent(q), headers:{'Content-Type':'application/x-www-form-urlencoded'}}, ms);
@@ -492,11 +492,14 @@
   // áreas já carregadas (10 min) para não pedir de novo ao mover pouco o mapa
   const areas = {ocm: [], osm: []};
   const covered = (src, b) => areas[src].some(a => Date.now() - a.t < 600000 && a.b.contains(b));
-  const remember = (src, b) => { areas[src].push({b, t: Date.now()}); areas[src] = areas[src].slice(-30); };
+  const remember = (src, b) => { const a = {b, t: Date.now()}; areas[src].push(a); areas[src] = areas[src].slice(-30); return a; };
+  const forget = (src, a) => { areas[src] = areas[src].filter(x => x !== a); };
 
   async function getOCM(b){
     if (!apiKey || covered('ocm', b)) return [];
     const big = b.pad(0.3), c = big.getCenter();
+    const area = remember('ocm', big);   // marca já no início: evita pedir a mesma área duas vezes
+    try{
     const radius = Math.min(60, Math.max(2, c.distanceTo(big.getNorthEast())/1000));
     const url = 'https://api.openchargemap.io/v3/poi/?output=json&compact=false&verbose=false&includecomments=true'
       + '&maxresults=500&distanceunit=KM&distance='+radius.toFixed(1)
@@ -509,17 +512,16 @@
     if (!r) throw new Error('Open Charge Map sem resposta');
     if (r.status === 401 || r.status === 403) throw new Error('Chave do Open Charge Map recusada – confira em ⚙️');
     if (!r.ok) throw new Error('Open Charge Map fora do ar (erro '+r.status+')');
-    const out = (await r.json()).map(fromOCM);
-    remember('ocm', big);
-    return out;
+    return (await r.json()).map(fromOCM);
+    }catch(e){ forget('ocm', area); throw e; }
   }
   async function getOSM(b){
     if (covered('osm', b)) return [];
     const big = b.pad(0.3);
-    const q = `[out:json][timeout:25];nwr["amenity"="charging_station"](${big.getSouth()},${big.getWest()},${big.getNorth()},${big.getEast()});out center tags 800;`;
-    const out = ((await overpass(q)).elements || []).map(fromOSM);
-    remember('osm', big);
-    return out;
+    const area = remember('osm', big);
+    const q = `[out:json][timeout:20];nwr["amenity"="charging_station"](${big.getSouth()},${big.getWest()},${big.getNorth()},${big.getEast()});out center tags 800;`;
+    try{ return ((await overpass(q, 12000, 3)).elements || []).map(fromOSM); }
+    catch(e){ forget('osm', area); throw e; }
   }
 
   // Junta as duas fontes: se um ponto do OSM estiver a menos de 60 m de um do OCM, considera o mesmo posto
@@ -539,31 +541,55 @@
     return out;
   }
 
-  let retryT = null;
-  async function load(){
-    const z = map.getZoom();
-    if (z < 9){ setStatus('Aproxime o mapa para ver os postos'); layer.clearLayers(); return; }
-    const my = ++reqSeq;
-    setStatus('Buscando postos…');
-    const b = map.getBounds();
-    const [ocmR, osmR] = await Promise.allSettled([getOCM(b), getOSM(b)]);
-    if (my !== reqSeq) return;
-    const errs = [];
-    const ocm = ocmR.status==='fulfilled' ? ocmR.value : (errs.push(ocmR.reason.message), []);
-    const osm = osmR.status==='fulfilled' ? osmR.value : (errs.push(osmR.reason.message), []);
-    merge(ocm, osm).forEach(s => cache.set(s.id, s));
-    refreshNetworks();
-    render();
+  let retryT = null, retries = 0;
+  const twin = (a, b) => L.latLng(a.lat, a.lon).distanceTo([b.lat, b.lon]) < 60;
+  // junta no cache sem duplicar (o mesmo posto pode vir das duas fontes)
+  function addToCache(list, src){
+    const vals = [...cache.values()];
+    if (src === 'osm'){
+      const ocm = vals.filter(x => x.src === 'Open Charge Map');
+      merge(ocm, list).filter(x => x.src === 'OpenStreetMap').forEach(x => cache.set(x.id, x));
+    } else {
+      list.forEach(x => cache.set(x.id, x));
+      const osm = vals.filter(x => x.src === 'OpenStreetMap');
+      const kept = new Set(merge(list, osm).filter(x => x.src === 'OpenStreetMap').map(x => x.id));
+      osm.forEach(x => { if (!kept.has(x.id)) cache.delete(x.id); });
+    }
+  }
+  function statusFor(b, errs, pending){
     const shown = layer.getLayers().length;
     let msg = shown + ' posto' + (shown===1?'':'s') + ' na área';
     const nNew = [...cache.values()].filter(x => isNew(x) && x.lat != null && b.contains([x.lat, x.lon])).length;
     if (nNew) msg += ` · 🆕 ${nNew} novo${nNew>1?'s':''} nos últimos 30 dias`;
     if (!apiKey) msg += ' · só OSM (adicione a chave em ⚙️)';
-    if (errs.length){
-      msg += ' · ⚠ ' + errs.join(' · ') + ' – tentando de novo em 20 s';
-      clearTimeout(retryT); retryT = setTimeout(() => { if (my === reqSeq) load(); }, 20000);
-    }
+    if (pending) msg += ' · buscando mais…';
+    if (errs.length) msg += ' · ⚠ ' + errs.join(' · ') + (retries < 2 ? ' – nova tentativa em 30 s' : '');
     setStatus(msg);
+  }
+  function load(){
+    const z = map.getZoom();
+    if (z < 9){ setStatus('Aproxime o mapa para ver os postos'); layer.clearLayers(); return; }
+    const my = ++reqSeq, b = map.getBounds();
+    const jobs = [];
+    if (apiKey && !covered('ocm', b)) jobs.push(['ocm', getOCM(b)]);
+    if (!covered('osm', b)) jobs.push(['osm', getOSM(b)]);
+    if (!jobs.length){ render(); statusFor(b, [], 0); return; }
+    if (!layer.getLayers().length) setStatus('Buscando postos…');
+    const errs = []; let pending = jobs.length;
+    for (const [src, p] of jobs){
+      p.then(list => { addToCache(list, src); refreshNetworks(); render(); })
+       .catch(e => errs.push(e.message || 'falha de conexão'))
+       .finally(() => {
+         pending--;
+         if (my !== reqSeq) return;            // o mapa já mudou: a busca nova cuida do aviso
+         statusFor(b, errs, pending);
+         if (!pending){
+           clearTimeout(retryT);
+           if (errs.length && retries < 2){ retries++; retryT = setTimeout(() => { if (my === reqSeq) load(); }, 30000); }
+           else if (!errs.length) retries = 0;
+         }
+       });
+    }
   }
 
   function passes(s, sp){
